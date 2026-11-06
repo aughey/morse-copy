@@ -8,7 +8,7 @@ Practice copying Morse call signs by ear, using voice or keyboard answers.
 
 The actual static HTML, CSS, JavaScript, vendored Vosk engine, and five speech-model parts were migrated from the Morse Copy Sites source repository. The original four source commits are retained in Git history. `dist/` is the editable application source, as in the original project; `_site/` is generated deployment output.
 
-The migration keeps the original app assets unchanged, including:
+The migrated app source is formatted for readability and preserves:
 
 - Web Audio Morse playback, speed/spacing/tone controls, and feedback sounds.
 - On-device Vosk recognition, with both Nancy and November mapping to N.
@@ -43,4 +43,4 @@ The repository's Pages publishing source must be **GitHub Actions**. Deployment 
 
 ## Third-party notices
 
-Bundled Vosk components and the English model retain their Apache 2.0 license and attribution in `dist/vendor/NOTICE.txt` and `dist/vendor/LICENSE-APACHE-2.0.txt`. `scripts/patch-vosk.py` and `scripts/model-fetch-worker.js` preserve the original streaming model adapter. `.openai/hosting.json` records the source Site identity; GitHub Pages does not use it.
+Bundled Vosk components and the English model retain their Apache 2.0 license and attribution in `dist/vendor/NOTICE.txt` and `dist/vendor/LICENSE-APACHE-2.0.txt`. `scripts/patch-vosk.py` and `scripts/model-fetch-worker.js` preserve the original streaming model adapter. The original Sites hosting manifest was removed because GitHub Pages does not use it.

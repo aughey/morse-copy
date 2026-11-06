@@ -1,11 +1,140 @@
-const {test}=require('node:test');const assert=require('node:assert/strict');const vm=require('node:vm');const fs=require('node:fs');
-function setup(request){const events={};const states=[];const doc={hidden:false,addEventListener(n,fn){events[n]=fn}};const box={window:{},navigator:request?{wakeLock:{request}}:{},document:doc};vm.createContext(box);vm.runInContext(fs.readFileSync('dist/wake-lock.js','utf8'),box);const manager=new box.window.PracticeWakeLock(state=>states.push(state));return {manager,doc,events,states};}
-function sentinel(){const events={};return {released:false,releases:0,addEventListener(n,fn){events[n]=fn},async release(){this.released=true;this.releases++;events.release?.();}};}
-const tick=()=>new Promise(resolve=>setImmediate(resolve));
-test('requests a screen lock for active work and releases it when work ends',async()=>{const lock=sentinel();let requests=0;const {manager,states}=setup(async type=>{assert.equal(type,'screen');requests++;return lock});await manager.setActive(true);assert.equal(states.at(-1),'locked');await manager.setActive(true);assert.equal(requests,1);await manager.setActive(false);assert.equal(lock.releases,1);assert.equal(states.at(-1),'idle');});
-test('a late grant after ending the session is immediately released',async()=>{let grant;const {manager,states}=setup(()=>new Promise(resolve=>grant=resolve));const pending=manager.setActive(true);await manager.setActive(false);const lock=sentinel();grant(lock);await pending;assert.equal(lock.releases,1);assert.equal(manager.lock,null);assert.equal(states.at(-1),'idle');});
-test('a rapid stop and restart acquires a fresh lock after the stale request',async()=>{let grant,count=0;const fresh=sentinel();const {manager}=setup(()=>++count===1?new Promise(resolve=>grant=resolve):Promise.resolve(fresh));const pending=manager.setActive(true);await manager.setActive(false);await manager.setActive(true);const stale=sentinel();grant(stale);await pending;assert.equal(stale.releases,1);assert.equal(manager.lock,fresh);assert.equal(count,2);});
-test('hiding releases the lock and returning to active work reacquires it',async()=>{const locks=[];const {manager,doc,events}=setup(async()=>{const lock=sentinel();locks.push(lock);return lock});await manager.setActive(true);doc.hidden=true;events.visibilitychange();assert.equal(locks[0].releases,1);doc.hidden=false;events.visibilitychange();await tick();assert.equal(locks.length,2);assert.equal(manager.lock,locks[1]);});
-test('a rejected request offers retry without interrupting practice',async()=>{let attempts=0;const {manager,states}=setup(async()=>{if(++attempts===1)throw Error('Power saving');return sentinel()});await manager.setActive(true);assert.equal(states.at(-1),'blocked');assert.equal(manager.active,true);await manager.acquire();assert.equal(states.at(-1),'locked');});
-test('system release updates status and can be retried',async()=>{const locks=[];const {manager,states}=setup(async()=>{const lock=sentinel();locks.push(lock);return lock});await manager.setActive(true);await locks[0].release();assert.equal(states.at(-1),'released');await manager.acquire();assert.equal(states.at(-1),'locked');assert.equal(locks.length,2);});
-test('unsupported browsers report that the screen cannot be held awake',async()=>{const {manager,states}=setup();await manager.setActive(true);assert.equal(states.at(-1),'unsupported');await manager.setActive(false);assert.equal(states.at(-1),'idle');});
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+const vm = require("node:vm");
+const fs = require("node:fs");
+function setup(request) {
+  const events = {};
+  const states = [];
+  const doc = {
+    hidden: false,
+    addEventListener(n, fn) {
+      events[n] = fn;
+    },
+  };
+  const box = {
+    window: {},
+    navigator: request ? { wakeLock: { request } } : {},
+    document: doc,
+  };
+  vm.createContext(box);
+  vm.runInContext(fs.readFileSync("dist/wake-lock.js", "utf8"), box);
+  const manager = new box.window.PracticeWakeLock((state) =>
+    states.push(state),
+  );
+  return { manager, doc, events, states };
+}
+function sentinel() {
+  const events = {};
+  return {
+    released: false,
+    releases: 0,
+    addEventListener(n, fn) {
+      events[n] = fn;
+    },
+    async release() {
+      this.released = true;
+      this.releases++;
+      events.release?.();
+    },
+  };
+}
+const tick = () => new Promise((resolve) => setImmediate(resolve));
+test("requests a screen lock for active work and releases it when work ends", async () => {
+  const lock = sentinel();
+  let requests = 0;
+  const { manager, states } = setup(async (type) => {
+    assert.equal(type, "screen");
+    requests++;
+    return lock;
+  });
+  await manager.setActive(true);
+  assert.equal(states.at(-1), "locked");
+  await manager.setActive(true);
+  assert.equal(requests, 1);
+  await manager.setActive(false);
+  assert.equal(lock.releases, 1);
+  assert.equal(states.at(-1), "idle");
+});
+test("a late grant after ending the session is immediately released", async () => {
+  let grant;
+  const { manager, states } = setup(
+    () => new Promise((resolve) => (grant = resolve)),
+  );
+  const pending = manager.setActive(true);
+  await manager.setActive(false);
+  const lock = sentinel();
+  grant(lock);
+  await pending;
+  assert.equal(lock.releases, 1);
+  assert.equal(manager.lock, null);
+  assert.equal(states.at(-1), "idle");
+});
+test("a rapid stop and restart acquires a fresh lock after the stale request", async () => {
+  let grant,
+    count = 0;
+  const fresh = sentinel();
+  const { manager } = setup(() =>
+    ++count === 1
+      ? new Promise((resolve) => (grant = resolve))
+      : Promise.resolve(fresh),
+  );
+  const pending = manager.setActive(true);
+  await manager.setActive(false);
+  await manager.setActive(true);
+  const stale = sentinel();
+  grant(stale);
+  await pending;
+  assert.equal(stale.releases, 1);
+  assert.equal(manager.lock, fresh);
+  assert.equal(count, 2);
+});
+test("hiding releases the lock and returning to active work reacquires it", async () => {
+  const locks = [];
+  const { manager, doc, events } = setup(async () => {
+    const lock = sentinel();
+    locks.push(lock);
+    return lock;
+  });
+  await manager.setActive(true);
+  doc.hidden = true;
+  events.visibilitychange();
+  assert.equal(locks[0].releases, 1);
+  doc.hidden = false;
+  events.visibilitychange();
+  await tick();
+  assert.equal(locks.length, 2);
+  assert.equal(manager.lock, locks[1]);
+});
+test("a rejected request offers retry without interrupting practice", async () => {
+  let attempts = 0;
+  const { manager, states } = setup(async () => {
+    if (++attempts === 1) throw Error("Power saving");
+    return sentinel();
+  });
+  await manager.setActive(true);
+  assert.equal(states.at(-1), "blocked");
+  assert.equal(manager.active, true);
+  await manager.acquire();
+  assert.equal(states.at(-1), "locked");
+});
+test("system release updates status and can be retried", async () => {
+  const locks = [];
+  const { manager, states } = setup(async () => {
+    const lock = sentinel();
+    locks.push(lock);
+    return lock;
+  });
+  await manager.setActive(true);
+  await locks[0].release();
+  assert.equal(states.at(-1), "released");
+  await manager.acquire();
+  assert.equal(states.at(-1), "locked");
+  assert.equal(locks.length, 2);
+});
+test("unsupported browsers report that the screen cannot be held awake", async () => {
+  const { manager, states } = setup();
+  await manager.setActive(true);
+  assert.equal(states.at(-1), "unsupported");
+  await manager.setActive(false);
+  assert.equal(states.at(-1), "idle");
+});
