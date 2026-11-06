@@ -265,6 +265,13 @@ const localVoice = new LocalVoice((state, value) => {
 $("signal").innerHTML = Array.from({ length: 31 }, () => "<span></span>").join(
   "",
 );
+function syncPracticeControls() {
+  const active = starting || running;
+  $("start").hidden = active;
+  for (const id of ["replay", "reveal", "pause"]) {
+    $(id).hidden = !active;
+  }
+}
 function setPhase(next, title, instruction) {
   phase = next;
   $("headline").textContent = title;
@@ -287,8 +294,7 @@ function setPhase(next, title, instruction) {
     "active",
     next === "playing" || next === "listening",
   );
-  $("replay").disabled = !running || ["playing", "feedback"].includes(next);
-  $("reveal").disabled = !running || ["playing", "feedback"].includes(next);
+  syncPracticeControls();
   $("answer").disabled = next !== "typing";
   $("submit").disabled = next !== "typing";
   $("answerForm").hidden = !running || $("inputMode").value !== "type";
@@ -325,7 +331,7 @@ async function audio() {
   if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
   await ctx.resume();
   if (ctx.state !== "running")
-    throw Error("Audio is paused. Tap Start or Replay to enable it.");
+    throw Error("Audio is paused. Tap Start or Repeat to enable it.");
 }
 function tone(hz, at, duration, level = 0.2, destination) {
   const osc = ctx.createOscillator(),
@@ -468,7 +474,7 @@ function answerTurn(token, duringPlayback = false) {
           setPhase(
             "listening",
             "No speech heard.",
-            "Tap Replay when you’re ready to try again.",
+            "Tap Repeat when you’re ready to try again.",
           );
           $("feedback").textContent =
             "No attempt counted. Your microphone is still connected.";
@@ -555,9 +561,6 @@ function endSession() {
   syncKeepAwake();
   invalidate();
   localVoice.closeMicrophone();
-  $("start").disabled = false;
-  $("start").textContent = "▶  Start practice";
-  $("pause").hidden = true;
   $("answerForm").hidden = true;
   setPhase(
     "paused",
@@ -571,8 +574,7 @@ $("start").onclick = async () => {
   starting = true;
   syncKeepAwake();
   const token = invalidate();
-  $("start").disabled = true;
-  $("pause").hidden = false;
+  syncPracticeControls();
   try {
     await audio();
     if (token !== epoch) return;
@@ -586,7 +588,6 @@ $("start").onclick = async () => {
         "Getting your station ready.",
         "Loading the local speech model. First use downloads about 40 MB.",
       );
-      $("start").textContent = "Preparing voice…";
       await localVoice.load();
       if (token !== epoch) return;
       $("feedback").textContent =
@@ -597,7 +598,6 @@ $("start").onclick = async () => {
     if (token !== epoch) return;
     starting = false;
     running = true;
-    $("start").textContent = "Session in progress";
     newCall();
     play();
   } catch (error) {
@@ -632,7 +632,7 @@ $("reveal").onclick = () => {
   setPhase(
     "revealed",
     "Here’s that call sign.",
-    "Tap Replay to listen again, then copy it back.",
+    "Tap Repeat to listen again, then copy it back.",
   );
   $("feedback").textContent =
     "Reveal counted as a miss. Keep practicing this call sign.";

@@ -97,9 +97,10 @@
           </div>
           <div class="actions">
             <button class="primary" id="start">▶ &nbsp; Start practice</button
-            ><button class="secondary" id="replay" disabled>
-              ↻ &nbsp; Replay</button
-            ><button class="text-button" id="reveal" disabled>Reveal</button>
+            ><button class="secondary" id="replay" hidden>
+              ↻ &nbsp; Repeat</button
+            ><button class="text-button" id="reveal" hidden>Reveal</button
+            ><button class="text-button" id="pause" hidden>End practice</button>
           </div>
           <form id="answerForm" class="answer-form" hidden>
             <label for="answer">Your copy</label>
@@ -119,7 +120,7 @@
           <div class="station-foot">
             <span id="inputNote"
               >Listening during Morse and your answer. Audio stays local.</span
-            ><button class="text-button" id="pause" hidden>End session</button>
+            >
           </div>
         </section>
         <aside class="settings card">
@@ -260,7 +261,7 @@
           playback, finish your call sign in one phrase. You can mix letters,
           numbers, and phonetic words. Use phonetic spelling to help voice
           recognition distinguish similar-sounding letters. If nothing is heard within 18
-          seconds after playback, tap Replay to try again without a penalty.
+          seconds after playback, tap Repeat to try again without a penalty.
         </p>
         <p>
           The screen stays awake automatically during practice and model loading
