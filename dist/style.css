@@ -465,6 +465,64 @@ footer > span:first-child {
 [hidden] {
   display: none !important;
 }
+.welcome {
+  width: min(600px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  padding: clamp(22px, 5vw, 36px);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--bg);
+  color: var(--ink);
+  box-shadow: 0 20px 80px #193d3533;
+}
+.welcome::backdrop {
+  background: #102b25b3;
+}
+body:has(.welcome[open]) {
+  overflow: hidden;
+}
+.welcome h2 {
+  font-size: clamp(26px, 5vw, 34px);
+  line-height: 1.2;
+  margin: 14px 0;
+}
+.welcome-steps {
+  padding-left: 23px;
+  line-height: 1.65;
+}
+.welcome-steps li {
+  padding-left: 5px;
+  margin: 12px 0;
+}
+.welcome-repeat {
+  background: var(--lime);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+.welcome-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-top: 24px;
+}
+.welcome-preference {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.welcome-preference input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--green);
+}
+footer .text-button {
+  padding: 0 8px;
+}
 @media (min-width: 1000px) {
   .practice {
     min-height: 627px;

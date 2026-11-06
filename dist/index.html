@@ -12,6 +12,22 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
+    <dialog id="welcome" class="welcome" aria-labelledby="welcomeTitle" aria-describedby="welcomeDescription">
+      <div class="eyebrow">WELCOME TO MORSE COPY</div>
+      <h2 id="welcomeTitle" tabindex="-1" autofocus>Your ears, your voice,<br />and a pencil.</h2>
+      <p id="welcomeDescription">Practice copying Morse call signs with a pen or pencil and paper. Speak your answers so you can keep your eyes on your copy.</p>
+      <ol class="welcome-steps">
+        <li><strong>Set up your station.</strong> Choose your character and effective speeds, audio settings, and call sign format. Leave <b>Answer with</b> set to <b>Voice</b>.</li>
+        <li><strong>Click Start practice.</strong> Allow microphone access when asked. Listen to the call sign in Morse and write it on your paper.</li>
+        <li><strong>Say the call sign aloud.</strong> For example, say “K one A B C” or “Kilo one Alpha Bravo Charlie.”</li>
+      </ol>
+      <p>A happy sound means you got it right, and the next call sign follows automatically. A different tone means try again, and the same call sign plays again.</p>
+      <p class="welcome-repeat">Need another listen? Say <strong>“repeat”</strong> to replay the call sign immediately, even while it’s playing. No typing needed.</p>
+      <form method="dialog" class="welcome-actions">
+        <label class="welcome-preference"><input type="checkbox" id="hideWelcome" /> Don’t show this again</label>
+        <button class="primary" type="submit">Set up practice</button>
+      </form>
+    </dialog>
     <header>
       <a class="brand" href="./"><span class="brand-icon">·−</span>MORSE COPY</a
       ><span class="header-note">A little practice. A better ear.</span
@@ -253,6 +269,7 @@
     </main>
     <footer>
       <span>·− &nbsp; MORSE COPY</span
+      ><button type="button" id="showWelcome" class="text-button">How to practice</button
       ><span>Train your ear. Trust your copy. &nbsp; 73.</span>
     </footer>
     <script src="vendor/vosk.js"></script>
@@ -260,5 +277,6 @@
     <script src="wake-lock.js"></script>
     <script src="radio.js"></script>
     <script src="app.js"></script>
+    <script src="welcome.js"></script>
   </body>
 </html>

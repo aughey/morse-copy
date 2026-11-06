@@ -11,6 +11,7 @@ const output = resolve(root, "_site");
 // Keep the original static source intact, including its patched speech worker.
 for (const file of [
   "app.js",
+  "welcome.js",
   "speech.js",
   "wake-lock.js",
   "radio.js",
