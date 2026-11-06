@@ -13,8 +13,6 @@ for (const file of [
   "app.js",
   "welcome.js",
   "speech.js",
-  "whisper.js",
-  "whisper-worker.js",
   "wake-lock.js",
   "radio.js",
   "mic-worklet.js",

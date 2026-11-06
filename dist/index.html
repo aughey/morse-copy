@@ -203,14 +203,6 @@
               <option value="type">Keyboard</option>
             </select>
           </div>
-          <div class="select-row" id="engineRow">
-            <label for="voiceEngine">Speech engine</label>
-            <select id="voiceEngine" aria-describedby="engineHint">
-              <option value="vosk">Vosk · current</option>
-              <option value="whisper">Whisper Tiny · experimental</option>
-            </select>
-          </div>
-          <p class="hint" id="engineHint">Vosk is the default. Try Whisper Tiny English alongside it; switch back anytime. Whisper transcribes after a pause, so answers and “repeat” may take longer, especially on phones. First use downloads the model and runtime from Hugging Face and jsDelivr. Audio stays on this device.</p>
           <div class="voice-box">
             <span id="voiceIcon">◉</span>
             <div>
@@ -253,7 +245,7 @@
       <details>
         <summary>Voice compatibility & practice notes</summary>
         <p>
-          By default, voice uses the Vosk small English model, running in a WebAssembly
+          Voice uses the Vosk small English model, running in a WebAssembly
           worker on your device. First use downloads about 40 MB from this site.
           The extracted model is cached in your browser when storage is
           available; clearing site data or browser storage eviction requires
@@ -261,9 +253,6 @@
           never uploaded. Voice requires microphone permission and a browser
           with WebAssembly and AudioWorklet support. Open the page in Safari or
           Chrome if an embedded browser does not offer microphone access.
-        </p>
-        <p>
-          Experimental Whisper Tiny English is available inside Answer with → Speech engine. It downloads a separate quantized model and runtime from Hugging Face and jsDelivr, cached when browser storage permits. Recognition runs locally in a worker. Speak a complete phrase, then pause; results and “repeat” arrive after transcription, which can be slower on mobile. Switch to Vosk to return to the current engine.
         </p>
         <p>
           The microphone stays connected during a voice session so practice can
@@ -309,7 +298,6 @@
     </footer>
     <script src="vendor/vosk.js"></script>
     <script src="speech.js"></script>
-    <script src="whisper.js"></script>
     <script src="wake-lock.js"></script>
     <script src="radio.js"></script>
     <script src="app.js"></script>

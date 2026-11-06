@@ -240,25 +240,18 @@ $("wakeStatus").onclick = () => screenAwake.acquire();
 window.addEventListener("focus", () => {
   if (starting || running || loadingVoice) screenAwake.acquire();
 });
-const engineName = () => $("voiceEngine").value === "whisper" ? "Whisper Tiny" : "Vosk";
-const downloadNote = () => $("voiceEngine").value === "whisper"
-  ? "Separate model and runtime download from Hugging Face and jsDelivr; may take a few minutes."
-  : "First use downloads about 40 MB from this site.";
-const voiceStatus = (state, value) => {
+const localVoice = new LocalVoice((state, value) => {
   if (state === "ready") {
-    $("voiceTitle").textContent = engineName() + " ready · running on this device";
+    $("voiceTitle").textContent = "Vosk ready · running on this device";
     $("voiceInfo").textContent =
       "Letters, digits, and phonetic words. No audio uploads.";
     $("install").hidden = true;
   } else if (state === "progress") {
-    const whisper = $("voiceEngine").value === "whisper";
-    $("voiceTitle").textContent = whisper
-      ? "Whisper download · " + value + "% of current file"
-      : "Downloading model · " + value + "%";
+    $("voiceTitle").textContent = "Downloading model · " + value + "%";
     $("voiceInfo").textContent =
-      whisper ? downloadNote() + " Keep this page open." : value === 100
+      value === 100
         ? "Download complete. Preparing local recognition…"
-        : downloadNote() + " Keep this page open.";
+        : "One-time download, about 40 MB. Keep this page open.";
   } else if (state === "loading") {
     $("voiceTitle").textContent = "Loading local voice…";
     $("voiceInfo").textContent =
@@ -268,11 +261,7 @@ const voiceStatus = (state, value) => {
     $("voiceInfo").textContent = value;
     $("install").hidden = false;
   }
-};
-let localVoice = new LocalVoice((state, value) => {
-  if (localVoice === voices.vosk) voiceStatus(state, value);
 });
-const voices = { vosk: localVoice };
 $("signal").innerHTML = Array.from({ length: 31 }, () => "<span></span>").join(
   "",
 );
@@ -597,7 +586,7 @@ $("start").onclick = async () => {
       setPhase(
         "loading",
         "Getting your station ready.",
-        "Loading " + engineName() + ". " + downloadNote(),
+        "Loading the local speech model. First use downloads about 40 MB.",
       );
       await localVoice.load();
       if (token !== epoch) return;
@@ -650,9 +639,9 @@ $("reveal").onclick = () => {
 };
 const settingIds = [
   "speed", "spacing", "tone", "volume", "staticLevel", "interference", "fading",
-  "format", "inputMode", "includeInternational", "voiceEngine",
+  "format", "inputMode", "includeInternational",
 ];
-for (const name of settingIds.filter((id) => !["format", "inputMode", "includeInternational", "voiceEngine"].includes(id))) {
+for (const name of settingIds.filter((id) => !["format", "inputMode", "includeInternational"].includes(id))) {
   $(name).oninput = () => {
     if (name === "speed") {
       $("spacing").max = $("speed").value;
@@ -697,14 +686,10 @@ $("format").onchange = saveSettings;
 $("includeInternational").onchange = saveSettings;
 function updateVoiceMode() {
   const voice = $("inputMode").value === "voice";
-  $("modeBadge").textContent = voice ? engineName().toUpperCase() + " · ON DEVICE" : "KEYBOARD";
-  $("answerSummary").textContent = voice ? "Voice · " + engineName() : "Keyboard";
-  $("engineRow").hidden = !voice;
-  $("engineHint").hidden = !voice;
+  $("modeBadge").textContent = voice ? "VOSK · ON DEVICE" : "KEYBOARD";
+  $("answerSummary").textContent = voice ? "Voice" : "Keyboard";
   $("inputNote").textContent = voice
-    ? ($("voiceEngine").value === "whisper"
-      ? "Whisper Tiny · pause after speaking; transcription may take a moment. Audio stays local."
-      : "Listening during Morse and your answer. Audio stays local.")
+    ? "Listening during Morse and your answer. Audio stays local."
     : "Type the complete call sign, then press Enter.";
   if (!running && !starting && phase === "idle")
     $("instruction").textContent = voice
@@ -724,7 +709,6 @@ $("install").onclick = async () => {
   loadingVoice = true;
   syncKeepAwake();
   $("install").disabled = true;
-  $("voiceEngine").disabled = true;
   $("install").textContent = "Loading voice…";
   try {
     await localVoice.load();
@@ -739,43 +723,24 @@ $("install").onclick = async () => {
     loadingVoice = false;
     syncKeepAwake();
     $("install").disabled = false;
-    $("voiceEngine").disabled = false;
-    $("install").textContent = "Load " + engineName();
+    $("install").textContent = "Load local voice · about 40 MB";
   }
 };
-function selectVoiceEngine() {
-  if (running || starting) {
-    endSession();
-    $("feedback").textContent = "Speech engine changed. Press Start practice to begin.";
-  }
-  const engine = $("voiceEngine").value === "whisper" ? "whisper" : "vosk";
-  $("voiceEngine").value = engine;
-  if (!voices[engine]) voices[engine] = new WhisperVoice((state, value) => {
-    if (localVoice === voices.whisper) voiceStatus(state, value);
-  });
-  localVoice = voices[engine];
-  voiceReady = localVoice.supported;
-  $("inputMode").options[0].disabled = !voiceReady;
-  if (!voiceReady) {
-    $("inputMode").value = "type";
-    $("voiceTitle").textContent = "Local voice is unavailable here";
-    $("voiceInfo").textContent = "Open this page in a browser with microphone access, WebAssembly, and AudioWorklet support.";
-    $("install").hidden = true;
-  } else if (localVoice.model?.ready) {
-    voiceStatus("ready");
-  } else {
-    $("voiceTitle").textContent = engineName() + " · model ready to load";
-    $("voiceInfo").textContent = downloadNote() + " Recognition runs on this device.";
-    $("install").hidden = false;
-  }
-  $("install").textContent = "Load " + engineName();
-  updateVoiceMode();
+voiceReady = localVoice.supported;
+$("inputMode").options[0].disabled = !voiceReady;
+if (!voiceReady) {
+  $("inputMode").value = "type";
+  $("voiceTitle").textContent = "Local voice is unavailable here";
+  $("voiceInfo").textContent =
+    "Open this page in a browser with microphone access, WebAssembly, and AudioWorklet support.";
+  $("install").hidden = true;
+} else {
+  $("voiceTitle").textContent = "Local voice · model ready to load";
+  $("voiceInfo").textContent =
+    "First use downloads about 40 MB. Recognition runs on this device.";
+  $("install").hidden = false;
 }
-$("voiceEngine").onchange = () => {
-  selectVoiceEngine();
-  saveSettings();
-};
-selectVoiceEngine();
+updateVoiceMode();
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && (running || starting)) endSession();
 });

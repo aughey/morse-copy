@@ -16,15 +16,11 @@ The migrated app source is formatted for readability and preserves:
 - **Call sign format** includes head-copy practice from **1 × 1** through **2 × 3**. Each side varies from one letter up to the selected maximum, around exactly one digit (0–9); for example, **2 × 2** mixes K1A, K1AB, KA1B, and KA1BC shapes. Start with **1 × 1** to hold a whole call in memory and answer aloud hands-free, then increase the lengths. These practice shapes need not be assigned call sign formats. Existing fixed formats remain available, and the selection is remembered.
 - Optional HF static (filtered hiss and crackles), interference (nearby CW and a drifting carrier), and signal fading with a different strength on each playback. Expand **Radio environment** in Station settings; each effect has its own 0–100% control and defaults to off. Effects follow the volume setting, run during call sign playback including letter gaps, and stop when playback ends or practice is interrupted. Settings are remembered and apply to the next playback.
 - **Call sign format** and **Answer with** are collapsed by default, like Radio environment. Expand them to adjust call generation or input options.
-- On-device Vosk recognition (the default), with Nancy/November mapping to N and Sugar/Sierra mapping to S. Saying “repeat” replays immediately, including during playback, without counting an attempt.
+- On-device Vosk recognition, with Nancy/November mapping to N and Sugar/Sierra mapping to S. Saying “repeat” replays immediately, including during playback, without counting an attempt.
 - Concurrent listening during Morse playback. A complete, correct spoken call sign scores immediately without waiting for silence, even during playback; other answers are scored after playback completes and speech settles.
 - Screen wake lock during practice and model loading, release on completion/hide, and retry support.
 
 All URLs are relative so assets and microphone worklets work under `/morse-copy/`. Voice initially downloads approximately 40 MB from the same site; the browser caches the extracted model. Speech audio is processed locally.
-
-To compare engines, expand **Answer with**, leave **Voice** selected, and choose **Whisper Tiny · experimental** under **Speech engine**. Press **Start practice** (or **Load Whisper Tiny**) to download and prepare it. Switch back to **Vosk · current** at any time; changing engines ends the current practice session and preserves session statistics. The choice is remembered. Both engines are included in the same deployment, and Whisper assets are requested only when loading Whisper.
-
-The experiment uses [Xenova/whisper-tiny.en](https://huggingface.co/Xenova/whisper-tiny.en), quantized to 8-bit, with [Transformers.js](https://huggingface.co/docs/transformers.js) 3.8.1 in a dedicated worker. The runtime version and model revision are pinned. It uses single-threaded WebAssembly to work with standard GitHub Pages headers, without requiring WebGPU. First use downloads roughly 41 MB of model weights plus the runtime from Hugging Face and jsDelivr; caching depends on browser storage. Microphone audio stays on the device. Speak a phrase and pause for about 1.2 seconds; transcription and “repeat” wait for local inference and can be slower on phones. This is an experimental comparison, not a claim of better mobile accuracy or speed. Real-device microphone testing is still needed. Vosk retains its original streaming recognition behavior.
 
 Radio effects set to 0 are omitted from the audio processing chain: no corresponding noise buffers, oscillators, filters, or fading automation are created. With all three at 0, Morse uses the direct clean-audio path. Changes apply on the next playback.
 
@@ -50,10 +46,8 @@ The repository's Pages publishing source must be **GitHub Actions**. Deployment 
 
 ## Tests and browser verification
 
-`tests/` covers Whisper resampling, deferred scoring, replay/cancellation, queued speech, inference errors, and silence handling, plus the existing recognition lifecycle, concurrent playback/capture, Nancy/November normalization, microphone cleanup, Morse timing, and wake lock lifecycle. Tests simulate browser APIs; actual microphone accuracy, audible playback, and device sleep behavior need a supported browser and real device. See `tests/README.md` for the original speech-engine integration harness.
+`tests/` covers recognition lifecycle, concurrent playback/capture, Nancy/November normalization, microphone cleanup, Morse timing, and wake lock lifecycle. Tests simulate browser APIs; actual microphone accuracy, audible playback, and device sleep behavior need a supported browser and real device. See `tests/README.md` for the original speech-engine integration harness.
 
 ## Third-party notices
 
 Bundled Vosk components and the English model retain their Apache 2.0 license and attribution in `dist/vendor/NOTICE.txt` and `dist/vendor/LICENSE-APACHE-2.0.txt`. `scripts/patch-vosk.py` and `scripts/model-fetch-worker.js` preserve the original streaming model adapter. The original Sites hosting manifest was removed because GitHub Pages does not use it.
-
-Experimental Whisper dependencies are fetched on demand rather than bundled: [Transformers.js license](https://github.com/huggingface/transformers.js/blob/3.8.1/LICENSE), [Whisper model card and license](https://huggingface.co/Xenova/whisper-tiny.en), and [ONNX Runtime license](https://github.com/microsoft/onnxruntime/blob/main/LICENSE).
