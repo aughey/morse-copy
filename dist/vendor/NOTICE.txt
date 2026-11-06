@@ -1,0 +1,12 @@
+vosk-browser 0.0.8 — Copyright Ciaran O'Reilly and contributors
+https://www.npmjs.com/package/vosk-browser
+https://github.com/lichess-org/vosk-browser
+Licensed under the Apache License, Version 2.0.
+Includes Vosk (Alpha Cephei), Kaldi and bundled runtime dependencies.
+The upstream bundle includes third-party copyright and license notices.
+Modification: a worker fetch adapter streams same-origin model parts.
+
+vosk-model-small-en-us-0.15 — Alpha Cephei, Apache License 2.0
+https://alphacephei.com/vosk/models
+Original archive: vosk-model-small-en-us-0.15.zip
+Repacked into a gzipped tar and split into 8 MiB assets without changing model files.

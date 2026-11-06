@@ -1,0 +1,14 @@
+<!doctype html><html><meta charset="utf-8"><title>Vosk validation</title><h1>Local model validation</h1><button id="test">Test local model</button><pre id="status">Ready</pre><pre id="result"></pre><script src="vendor/vosk.js"></script><script src="speech.js"></script><script>
+const status=document.querySelector('#status'), result=document.querySelector('#result');
+let engine=new LocalVoice((state,value)=>status.textContent=state+' '+(value??''));
+document.querySelector('#test').onclick=async()=>{try{
+const t=performance.now(); const model=await engine.load();
+status.textContent='Model loaded in '+Math.round(performance.now()-t)+'ms. Decoding local test recording…';
+const context=new AudioContext();const file=await fetch('qa-test.wav');if(!file.ok)throw Error('Missing test audio');const audio=await context.decodeAudioData(await file.arrayBuffer());
+const recognizer=new model.KaldiRecognizer(audio.sampleRate,JSON.stringify(VOICE_VOCABULARY));let parts=[];
+recognizer.on('result',message=>{if(message.result.text)parts.push(message.result.text);result.textContent=parts.join(' / ');});
+recognizer.on('error',message=>status.textContent='ERROR '+message.error);
+const data=audio.getChannelData(0);for(let i=0;i<data.length;i+=4096)recognizer.acceptWaveformFloat(data.slice(i,i+4096),audio.sampleRate);
+recognizer.retrieveFinalResult();setTimeout(()=>{status.textContent='Complete. Recognized: '+parts.join(' ');recognizer.remove();context.close();},10000);
+}catch(error){status.textContent='ERROR '+error.message;}};
+</script></html>

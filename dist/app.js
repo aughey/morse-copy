@@ -6,25 +6,62 @@ function normalize(text){return text.toLowerCase().replace(/double[\s-]+(?:you|u
 function randomInt(n){const a=new Uint32Array(1);crypto.getRandomValues(a);return Math.floor(a[0]/4294967296*n)}
 function generateCall(format){let f=format==='mixed'?['short','long','two'][randomInt(3)]:format;const letter=()=>String.fromCharCode(65+randomInt(26));const prefix=f==='two'?['KA','KB','KC','KD','KE','KF','KG','KI','KJ','KK','KL','KM','KN','KO','KP','KQ','KR','KS','KT','KU','KV','KW','KX','KY','KZ','WA','WB','WD'][randomInt(28)]:['K','N','W'][randomInt(3)];return prefix+randomInt(10)+Array.from({length:f==='short'?2:3},letter).join('');}
 function timings(call,wpm,effective){const dot=1.2/wpm;const gapUnit=Math.max(dot,(60/Math.min(effective,wpm)-31*dot)/19);let t=0;const events=[];[...call].forEach((c,i)=>{[...MORSE[c]].forEach((s,j)=>{const duration=dot*(s==='-'?3:1);events.push({at:t,duration});t+=duration;if(j<MORSE[c].length-1)t+=dot;});if(i<call.length-1)t+=3*gapUnit;});return {events,duration:t};}
-let ctx,recognizer,voiceReady=false,running=false,phase='idle',current='',attempted=false,epoch=0,correct=0,total=0,streak=0,lastCall='',nodes=new Set(),voiceProbe=0;
-const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+let ctx,voiceReady=false,starting=false,running=false,phase='idle',current='',attempted=false,epoch=0,correct=0,total=0,streak=0,lastCall='',nodes=new Set();
+const localVoice = new LocalVoice((state, value) => {
+  if(state==='ready') { $('voiceTitle').textContent='Vosk ready · running on this device'; $('voiceInfo').textContent='Letters, digits, and phonetic words. No audio uploads.'; $('install').hidden=true; }
+  else if(state==='progress') { $('voiceTitle').textContent='Downloading model · '+value+'%'; $('voiceInfo').textContent=value===100?'Download complete. Preparing local recognition…':'One-time download, about 40 MB. Keep this page open.'; }
+  else if(state==='loading') { $('voiceTitle').textContent='Loading local voice…'; $('voiceInfo').textContent='Restoring the cached model, or downloading it on first use.'; }
+  else if(state==='error') { $('voiceTitle').textContent='Voice setup needs another try'; $('voiceInfo').textContent=value; $('install').hidden=false; }
+});
 $('signal').innerHTML=Array.from({length:31},()=>'<span></span>').join('');
-function setPhase(next,title,instruction){phase=next;$('headline').textContent=title;$('instruction').textContent=instruction;const names={idle:'Standing by',playing:'Receiving Morse',listening:'Your turn · listening',typing:'Your turn · copy',feedback:'Copy checked',revealed:'Call sign revealed',paused:'Session paused'};$('statusLabel').textContent=names[next]||next;$('signal').classList.toggle('active',next==='playing'||next==='listening');$('replay').disabled=!running||['playing','feedback'].includes(next);$('reveal').disabled=!running||['playing','feedback'].includes(next);$('answer').disabled=next!=='typing';$('submit').disabled=next!=='typing';$('answerForm').hidden=!running||$('inputMode').value!=='type';}
+function setPhase(next,title,instruction){phase=next;$('headline').textContent=title;$('instruction').textContent=instruction;const names={loading:'Preparing local voice',idle:'Standing by',playing:'Receiving Morse',listening:'Your turn · listening',typing:'Your turn · copy',feedback:'Copy checked',revealed:'Call sign revealed',paused:'Session paused'};$('statusLabel').textContent=names[next]||next;$('signal').classList.toggle('active',next==='playing'||next==='listening');$('replay').disabled=!running||['playing','feedback'].includes(next);$('reveal').disabled=!running||['playing','feedback'].includes(next);$('answer').disabled=next!=='typing';$('submit').disabled=next!=='typing';$('answerForm').hidden=!running||$('inputMode').value!=='type';}
 function stats(){$('correct').textContent=correct;$('accuracy').textContent=total?Math.round(correct/total*100)+'%':'—';$('streak').textContent=streak;}
 function silence(){for(const n of nodes){try{n.stop()}catch{}}nodes.clear();}
-function stopListening(){if(recognizer){const r=recognizer;recognizer=null;r.onend=null;r.onresult=null;r.onerror=null;try{r.abort()}catch{}}}
+function stopListening(){localVoice.stop();}
 function invalidate(){epoch++;stopListening();silence();return epoch;}
 async function audio(){if(!ctx)ctx=new (window.AudioContext||window.webkitAudioContext)();await ctx.resume();if(ctx.state!=='running')throw Error('Audio is paused. Tap Start or Replay to enable it.');}
 function tone(hz,at,duration,level=.2){const osc=ctx.createOscillator(),gain=ctx.createGain();osc.frequency.value=hz;osc.connect(gain);gain.connect(ctx.destination);const volume=Number($('volume').value)/100;gain.gain.setValueAtTime(0,at);gain.gain.linearRampToValueAtTime(level*volume,at+.005);gain.gain.setValueAtTime(level*volume,at+Math.max(.006,duration-.008));gain.gain.linearRampToValueAtTime(0,at+duration);osc.start(at);osc.stop(at+duration+.02);nodes.add(osc);osc.onended=()=>{nodes.delete(osc);osc.disconnect();gain.disconnect()};}
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 function clearCopy(){$('call').textContent='· · ·   − − −   · · ·';$('call').classList.remove('revealed');$('call').setAttribute('aria-label','Call sign hidden');$('answer').value='';}
 async function play(){const token=invalidate();if(!running)return;clearCopy();$('feedback').textContent='Listen for the whole call sign.';setPhase('playing','Listen. You’ve got this.','Copy the letters and numbers in your head.');try{await audio();if(token!==epoch)return;const seq=timings(current,+$('speed').value,+$('spacing').value);const start=ctx.currentTime+.15;seq.events.forEach(e=>tone(+$('tone').value,start+e.at,e.duration));await delay((seq.duration+.4)*1000);if(token!==epoch||!running)return;answerTurn(token);}catch(e){if(token===epoch){endSession();$('feedback').textContent=e.message;}}}
-function keyboardTurn(message){stopListening();$('inputMode').value='type';$('modeBadge').textContent='KEYBOARD';$('inputNote').textContent='Type the complete call sign, then press Enter.';setPhase('typing','What did you hear?','Type the letters and numbers of the call sign.');if(message)$('feedback').textContent=message;$('answer').focus();}
-function answerTurn(token){if($('inputMode').value==='type'||!voiceReady){keyboardTurn();return;}setPhase('listening','Your turn. Say your copy.','Say the complete call sign in one phrase.');$('feedback').textContent='Listening on your device…';try{const r=new SR();recognizer=r;r.lang='en-US';r.processLocally=true;r.continuous=false;r.interimResults=false;r.maxAlternatives=5;let heard=false;r.onresult=e=>{if(token!==epoch||!running)return;heard=true;const alternatives=Array.from(e.results[e.resultIndex]).map(x=>x.transcript);const match=alternatives.find(t=>normalize(t)===current);check(match||alternatives[0]);};r.onerror=e=>{if(token!==epoch||!running)return;heard=true;if(e.error==='no-speech'){setPhase('listening','No speech heard.','Tap Replay to hear the call sign and try again.');$('feedback').textContent='No attempt counted. Tap Replay when you’re ready.';return;}keyboardTurn('Voice unavailable ('+e.error+'). Continue with the keyboard.');};r.onend=()=>{if(recognizer===r)recognizer=null;if(token===epoch&&running&&!heard&&phase==='listening'){$('feedback').textContent='No answer captured. Tap Replay to try again.';}};r.start();}catch(e){keyboardTurn('Could not start on-device recognition. Use the keyboard to continue.');}}
+function keyboardTurn(message){stopListening();localVoice.closeMicrophone();$('inputMode').value='type';$('modeBadge').textContent='KEYBOARD';$('inputNote').textContent='Type the complete call sign, then press Enter.';setPhase('typing','What did you hear?','Type the letters and numbers of the call sign.');if(message)$('feedback').textContent=message;$('answer').focus();}
+function answerTurn(token){
+  if($('inputMode').value==='type'||!voiceReady){keyboardTurn();return;}
+  setPhase('listening','Your turn. Say your copy.','Say the complete call sign in one phrase.');
+  $('feedback').textContent='Listening locally… letters, numbers, or phonetic words.';
+  const valid=()=>token===epoch&&running;
+  try { localVoice.listen({
+    onResult: text=>{if(valid())check(text);},
+    onPartial: text=>{if(valid())$('feedback').textContent=text?'Hearing: '+text:'Listening on your device…';},
+    onEmpty: ()=>{if(valid()){setPhase('listening','No speech heard.','Tap Replay when you’re ready to try again.');$('feedback').textContent='No attempt counted. Your microphone is still connected.';}},
+    onError: error=>{if(valid())keyboardTurn(error.message+' Continue with the keyboard, or restart voice practice.');}
+  }); } catch(error) { if(valid())keyboardTurn(error.message); }
+}
 async function check(spoken){if(!running||!['typing','listening'].includes(phase))return;const copy=normalize(spoken||'');if(!copy)return;const token=invalidate();const good=copy===current;total++;if(good){correct++;streak++;}else{streak=0;attempted=true;}stats();setPhase('feedback',good?'Good copy. Nicely done.':'Not quite. Listen again.',good?'A new call sign is coming up.':'Same call sign. Another chance to catch it.');$('feedback').textContent='Your copy: '+copy+(good?' · Correct':' · Try again');if(good){$('call').textContent=current;$('call').classList.add('revealed');$('call').setAttribute('aria-label',current);}try{await audio();if(token!==epoch)return;const t=ctx.currentTime+.05;if(good){tone(880,t,.14,.24);tone(1174.66,t+.15,.3,.18);}else{tone(220,t,.42,.25);tone(164.81,t+.09,.4,.15);}}catch{}await delay(good?1400:1800);if(token!==epoch||!running)return;if(good)newCall();play();}
 function newCall(){let next;do{next=generateCall($('format').value)}while(next===lastCall);current=next;lastCall=next;attempted=false;}
-function endSession(){running=false;invalidate();$('start').disabled=false;$('start').textContent='▶  Start practice';$('pause').hidden=true;$('answerForm').hidden=true;setPhase('paused','A good place to pause.','Your session stats stay here. Start again whenever you like.');$('feedback').textContent='73. See you on the next frequency.';}
-$('start').onclick=async()=>{if(running)return;$('start').disabled=true;try{await audio();running=true;$('start').textContent='Session in progress';$('pause').hidden=false;newCall();play();}catch(e){$('start').disabled=false;$('feedback').textContent=e.message;}};
+function endSession(){running=false;starting=false;invalidate();localVoice.closeMicrophone();$('start').disabled=false;$('start').textContent='▶  Start practice';$('pause').hidden=true;$('answerForm').hidden=true;setPhase('paused','A good place to pause.','Your session stats stay here. Start again whenever you like.');$('feedback').textContent='73. See you on the next frequency.';}
+$('start').onclick=async()=>{
+  if(running||starting)return;
+  starting=true; const token=invalidate(); $('start').disabled=true; $('pause').hidden=false;
+  try {
+    await audio();
+    if(token!==epoch)return;
+    if($('inputMode').value==='voice') {
+      if(!localVoice.supported)throw new Error('Local voice needs microphone access, WebAssembly, and AudioWorklet support. Select Keyboard to practice here.');
+      setPhase('loading','Getting your station ready.','Loading the local speech model. First use downloads about 40 MB.');
+      $('start').textContent='Preparing voice…';
+      await localVoice.load(); if(token!==epoch)return;
+      $('feedback').textContent='Allow microphone access to begin. Audio stays on your device.';
+      const opened=await localVoice.openMicrophone(ctx);if(token!==epoch||!opened)return;
+    }
+    if(token!==epoch)return;
+    starting=false;running=true;$('start').textContent='Session in progress';newCall();play();
+  }catch(error){
+    if(token!==epoch)return;
+    endSession();
+    $('feedback').textContent=error.name==='NotAllowedError'?'Microphone permission was not granted. Allow access in your browser settings, or select Keyboard.':error.message;
+  }
+};
 $('pause').onclick=endSession;$('replay').onclick=()=>{if(running)play()};
 $('answerForm').onsubmit=e=>{e.preventDefault();check($('answer').value)};
 $('reveal').onclick=()=>{if(!running)return;invalidate();if(!attempted){total++;streak=0;attempted=true;stats();}$('call').textContent=current;$('call').classList.add('revealed');$('call').setAttribute('aria-label',current);setPhase('revealed','Here’s that call sign.','Tap Replay to listen again, then copy it back.');$('feedback').textContent='Reveal counted as a miss. Keep practicing this call sign.';};
@@ -32,9 +69,26 @@ for(const name of ['speed','spacing','tone','volume']){$(name).oninput=()=>{if(n
 function saveSettings(){try{localStorage.setItem('morse-copy-settings',JSON.stringify(Object.fromEntries(['speed','spacing','tone','volume','format','inputMode'].map(id=>[id,$(id).value]))))}catch{}}
 try{const saved=JSON.parse(localStorage.getItem('morse-copy-settings')||'null');if(saved){if(saved.speed)$('spacing').max=saved.speed;for(const id of ['speed','spacing','tone','volume','format','inputMode'])if(saved[id]!==undefined)$(id).value=saved[id];$('speed').oninput();}}catch{}
 $('format').onchange=saveSettings;
-$('inputMode').onchange=()=>{if($('inputMode').value==='voice'&&!voiceReady){$('inputMode').value='type';$('feedback').textContent='On-device voice is unavailable in this browser.';}saveSettings();$('modeBadge').textContent=$('inputMode').value==='voice'?'ON-DEVICE VOICE':'KEYBOARD';$('inputNote').textContent=$('inputMode').value==='voice'?'Microphone listens only after the code finishes.':'Type the complete call sign, then press Enter.';if(running)play();};
-function voiceUI(ready,title,info){voiceReady=ready;$('voiceTitle').textContent=title;$('voiceInfo').textContent=info;$('inputMode').options[0].disabled=!ready;if(!ready)$('inputMode').value='type';if(!running&&phase==='idle')$('instruction').textContent=$('inputMode').value==='voice'?'Press start, listen to the Morse code, then speak the letters and numbers.':'Press start, listen to the Morse code, then type the letters and numbers.';$('modeBadge').textContent=$('inputMode').value==='voice'?'ON-DEVICE VOICE':'KEYBOARD';$('inputNote').textContent=$('inputMode').value==='voice'?'Microphone listens only after the code finishes.':'Type the complete call sign, then press Enter.';}
-async function probeVoice(){const probe=++voiceProbe;try{if(!SR||!('processLocally' in new SR())){voiceUI(false,'Keyboard ready · voice unsupported','This browser cannot guarantee on-device speech. Try a browser with local Web Speech support.');return;}if(typeof SR.available==='function'){const available=await SR.available({langs:['en-US'],processLocally:true});if(probe!==voiceProbe)return;if(available!=='available'){voiceUI(false,available==='unavailable'?'Local English speech unavailable':'English language pack needed','Keyboard practice is ready. Voice uses an English (US) pack stored on this device.');$('install').hidden=!['downloadable','downloading'].includes(available)||typeof SR.install!=='function';return;}}voiceUI(true,'On-device voice ready','Say letters and numbers, or use phonetic words. Audio is never sent to a speech server.');$('install').hidden=true;}catch(e){if(probe===voiceProbe)voiceUI(false,'Local voice could not be enabled','Keyboard practice is ready. Your browser may restrict local speech access.');}}
-$('install').onclick=async()=>{$('install').disabled=true;$('install').textContent='Downloading English pack…';try{const ok=await SR.install({langs:['en-US'],processLocally:true});if(!ok)throw Error('Download incomplete');await probeVoice();}catch(e){$('voiceInfo').textContent='Language pack could not be installed. You can still practice with the keyboard.';}finally{$('install').disabled=false;$('install').textContent='Download English language pack';}};
-document.addEventListener('visibilitychange',()=>{if(document.hidden&&running)endSession();});
-probeVoice();
+function updateVoiceMode(){
+  const voice=$('inputMode').value==='voice';
+  $('modeBadge').textContent=voice?'VOSK · ON DEVICE':'KEYBOARD';
+  $('inputNote').textContent=voice?'Mic stays on during the session; only answers are decoded.':'Type the complete call sign, then press Enter.';
+  if(!running&&!starting&&phase==='idle')$('instruction').textContent=voice?'Press start, listen to the Morse code, then speak the letters and numbers.':'Press start, listen to the Morse code, then type the letters and numbers.';
+}
+$('inputMode').onchange=()=>{
+  if(running||starting){endSession();$('feedback').textContent='Answer mode changed. Press Start practice to begin.';}
+  saveSettings();updateVoiceMode();
+};
+$('install').onclick=async()=>{
+  $('install').disabled=true;$('install').textContent='Loading voice…';
+  try{await localVoice.load();if(!running&&!starting){$('inputMode').value='voice';updateVoiceMode();saveSettings();}}
+  catch(error){$('voiceInfo').textContent=error.message;}
+  finally{$('install').disabled=false;$('install').textContent='Load local voice · about 40 MB';}
+};
+voiceReady=localVoice.supported;
+$('inputMode').options[0].disabled=!voiceReady;
+if(!voiceReady){$('inputMode').value='type';$('voiceTitle').textContent='Local voice is unavailable here';$('voiceInfo').textContent='Open this page in a browser with microphone access, WebAssembly, and AudioWorklet support.';$('install').hidden=true;}
+else{$('voiceTitle').textContent='Local voice · model ready to load';$('voiceInfo').textContent='First use downloads about 40 MB. Recognition runs on this device.';$('install').hidden=false;}
+updateVoiceMode();
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&(running||starting))endSession();});
+window.addEventListener('pagehide',()=>localVoice.closeMicrophone());

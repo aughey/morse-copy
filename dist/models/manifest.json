@@ -1,0 +1,33 @@
+{
+  "model": "vosk-model-small-en-us-0.15",
+  "license": "Apache-2.0",
+  "source": "https://alphacephei.com/vosk/models",
+  "parts": [
+    {
+      "file": "en-us-0.15-00.bin",
+      "bytes": 8388608,
+      "sha256": "e2caaff4028464cbc12112d90fe2a87a7df13fa5da79b63fdf3333c266827301"
+    },
+    {
+      "file": "en-us-0.15-01.bin",
+      "bytes": 8388608,
+      "sha256": "1dfd0110b964e7dcac026825fdd0fba68c20478d39faa441f43d7b1c7e2cec79"
+    },
+    {
+      "file": "en-us-0.15-02.bin",
+      "bytes": 8388608,
+      "sha256": "32b0d2ed3b8bab8b5119d4ee8ef04fef3c7bb015d2032153aa22a4628a9c10ab"
+    },
+    {
+      "file": "en-us-0.15-03.bin",
+      "bytes": 8388608,
+      "sha256": "e71a4a8a85c46dbc70dd3776272a5c033540487313782e39b10d92a591bec7e3"
+    },
+    {
+      "file": "en-us-0.15-04.bin",
+      "bytes": 7562827,
+      "sha256": "9d8878d63b49ff6c6eafda191b9890a3367b916f6d2a434127a213cafd668dc6"
+    }
+  ],
+  "bytes": 41117259
+}
