@@ -5,6 +5,8 @@ class RadioEnvironment {
   constructor(ctx, start, duration, { staticLevel, interference, fading, volume, hz }) {
     this.sources = new Set();
     this.connections = [];
+    // Zero means bypass: allocate no audio nodes or sample buffers.
+    if (!(staticLevel > 0 || interference > 0 || fading > 0)) return;
     const keep = (node) => {
       this.connections.push(node);
       return node;
@@ -16,22 +18,25 @@ class RadioEnvironment {
     output.gain.linearRampToValueAtTime(volume, start);
     output.gain.setValueAtTime(volume, end - 0.05);
     output.gain.linearRampToValueAtTime(0, end);
-    this.input = keep(ctx.createGain());
-    this.input.connect(output);
+    this.input = output;
+    if (fading > 0) {
+      this.input = keep(ctx.createGain());
+      this.input.connect(output);
 
-    // Slow, continuous QSB with a different received strength on each replay.
-    const depth = fading / 100;
-    const strength = 1 - depth * (0.15 + Math.random() * 0.45);
-    const phase = Math.random() * Math.PI * 2;
-    const period = 2.5 + Math.random() * 4;
-    const curve = new Float32Array(Math.max(2, Math.ceil((end - start) * 30)));
-    for (let i = 0; i < curve.length; i++) {
-      const t = (i / (curve.length - 1)) * (end - start);
-      const swell = (1 + Math.sin(phase + (t * 2 * Math.PI) / period)) / 2;
-      const flutter = (1 + Math.sin(phase * 2 + t * 11)) / 2;
-      curve[i] = strength * (1 - depth * (0.75 * swell + 0.1 * flutter));
+      // Slow, continuous QSB with a different received strength on each replay.
+      const depth = fading / 100;
+      const strength = 1 - depth * (0.15 + Math.random() * 0.45);
+      const phase = Math.random() * Math.PI * 2;
+      const period = 2.5 + Math.random() * 4;
+      const curve = new Float32Array(Math.max(2, Math.ceil((end - start) * 30)));
+      for (let i = 0; i < curve.length; i++) {
+        const t = (i / (curve.length - 1)) * (end - start);
+        const swell = (1 + Math.sin(phase + (t * 2 * Math.PI) / period)) / 2;
+        const flutter = (1 + Math.sin(phase * 2 + t * 11)) / 2;
+        curve[i] = strength * (1 - depth * (0.75 * swell + 0.1 * flutter));
+      }
+      this.input.gain.setValueCurveAtTime(curve, start, end - start);
     }
-    this.input.gain.setValueCurveAtTime(curve, start, end - start);
 
     const source = (node, at = start - 0.05, until = end) => {
       this.sources.add(node);
@@ -101,12 +106,7 @@ class RadioEnvironment {
         source(osc);
       }
     }
-    // Also drives cleanup when only fading is enabled.
-    const clock = ctx.createBufferSource();
-    clock.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
-    clock.loop = true;
-    clock.connect(output);
-    source(clock);
+
   }
 
   disconnect() {

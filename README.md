@@ -18,6 +18,8 @@ The migrated app source is formatted for readability and preserves:
 
 All URLs are relative so assets and microphone worklets work under `/morse-copy/`. Voice initially downloads approximately 40 MB from the same site; the browser caches the extracted model. Speech audio is processed locally.
 
+Radio effects set to 0 are omitted from the audio processing chain: no corresponding noise buffers, oscillators, filters, or fading automation are created. With all three at 0, Morse uses the direct clean-audio path. Changes apply on the next playback.
+
 ## Develop and verify
 
 Requires Node.js 22 or newer. No npm dependencies or installation step are needed.

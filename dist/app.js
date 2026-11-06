@@ -393,6 +393,11 @@ async function play() {
     );
     await delay((seq.duration + 0.4) * 1000);
     if (token !== epoch || !running) return;
+    // Release fading-only graphs too, without running a silent audio source.
+    if (radio) {
+      radio.stop();
+      radio = null;
+    }
     if (
       captureVoice &&
       $("inputMode").value === "voice" &&
