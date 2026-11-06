@@ -63,6 +63,9 @@ test("grammar is fixed and covers letters, digits and phonetic words", () => {
     "alpha",
     "nancy",
     "november",
+    "sierra",
+    "sugar",
+    "repeat",
     "x ray",
     "double you",
     "[unk]",
@@ -114,6 +117,35 @@ test("replay cancels stale recognition events", () => {
   timers.get(voice.settleTimeout)();
   assert.equal(count, 1);
 });
+for (const event of ["partialresult", "result"]) {
+  for (const deferResult of [false, true]) {
+    test(`repeat immediately replays on ${event}, deferred=${deferResult}`, () => {
+      const { voice, recognizers, timers } = setup();
+      let replays = 0;
+      const unexpected = () => assert.fail("Replay must not submit an answer");
+      voice.listen({
+        deferResult,
+        onReplay: () => replays++,
+        onResult: unexpected,
+        onPartial: unexpected,
+        onEmpty: unexpected,
+        onError: unexpected,
+      });
+      const r = recognizers[0];
+      const result = event === "partialresult"
+        ? { partial: "kilo one repeat" }
+        : { text: "kilo one repeat" };
+      r.listeners[event]({ result });
+      assert.equal(replays, 1);
+      assert(r.removed);
+      assert.equal(voice.recognizer, null);
+      assert.equal(timers.size, 0);
+      r.listeners.partialresult({ result: { partial: "repeat" } });
+      r.listeners.result({ result: { text: "repeat" } });
+      assert.equal(replays, 1);
+    });
+  }
+}
 test("no-speech timeout flushes audio without submitting an empty answer", () => {
   const { voice, recognizers, timers } = setup();
   let empty = 0,
@@ -382,4 +414,10 @@ test("Nancy and November normalize to the same letter N", () => {
     vm.runInContext("normalize('November one Alpha Bravo')", context),
     "N1AB",
   );
+  for (const word of ["Sugar", "Sierra"]) {
+    assert.equal(
+      vm.runInContext(`normalize('Kilo one ${word} Bravo')`, context),
+      "K1SB",
+    );
+  }
 });

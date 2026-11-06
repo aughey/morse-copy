@@ -61,6 +61,7 @@ const WORDS = {
   quebec: "Q",
   romeo: "R",
   sierra: "S",
+  sugar: "S",
   tango: "T",
   uniform: "U",
   victor: "V",
@@ -454,6 +455,9 @@ function answerTurn(token, duringPlayback = false) {
   try {
     localVoice.listen({
       deferResult: duringPlayback,
+      onReplay: () => {
+        if (valid()) play();
+      },
       onResult: (text) => {
         if (valid()) check(text);
       },
@@ -488,6 +492,10 @@ function answerTurn(token, duringPlayback = false) {
 }
 async function check(spoken) {
   if (!running || !["typing", "listening"].includes(phase)) return;
+  if (/\brepeat\b/i.test(spoken || "")) {
+    play();
+    return;
+  }
   const copy = normalize(spoken || "");
   if (!copy) return;
   const token = invalidate();

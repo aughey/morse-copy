@@ -78,4 +78,19 @@ test("practice starts voice capture before the first Morse tone and retains it a
   assert.equal(events.filter((e) => e === "listen").length, 1);
   assert.equal(events.at(-1), "playback-finished");
   assert.equal(vm.runInContext("phase", box), "listening");
+  // A voice replay invokes playback directly and preserves all scoring state.
+  vm.runInContext(
+    "total=4;correct=3;streak=2;attempted=false;play=()=>events.push('replay')",
+    box,
+  );
+  vm.runInContext("localVoice.callbacks.onReplay()", box);
+  assert.equal(events.at(-1), "replay");
+  assert.equal(vm.runInContext("current", box), "N1AB");
+  assert.equal(vm.runInContext("total", box), 4);
+  assert.equal(vm.runInContext("correct", box), 3);
+  assert.equal(vm.runInContext("streak", box), 2);
+  assert.equal(vm.runInContext("attempted", box), false);
+  const replayCount = events.filter((e) => e === "replay").length;
+  vm.runInContext("invalidate();localVoice.callbacks.onReplay()", box);
+  assert.equal(events.filter((e) => e === "replay").length, replayCount);
 });

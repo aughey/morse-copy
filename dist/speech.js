@@ -61,6 +61,7 @@ const VOICE_VOCABULARY = [
   "quebec",
   "romeo",
   "sierra",
+  "sugar",
   "tango",
   "uniform",
   "victor",
@@ -90,6 +91,7 @@ const VOICE_VOCABULARY = [
   "ex",
   "why",
   "zee",
+  "repeat",
   "[unk]",
 ];
 class LocalVoice {
@@ -239,7 +241,7 @@ class LocalVoice {
       throw error;
     }
   }
-  listen({ onResult, onPartial, onEmpty, onError, deferResult = false }) {
+  listen({ onResult, onPartial, onEmpty, onError, onReplay, deferResult = false }) {
     this.stop();
     if (!this.model?.ready || !this.stream?.active)
       throw new Error("Local voice is not ready. Restart practice.");
@@ -261,9 +263,18 @@ class LocalVoice {
       this.stop();
       text ? onResult(text) : onEmpty();
     };
+    // Commands bypass both the silence timer and deferred scoring during Morse.
+    const replay = (text) => {
+      if (!onReplay || !/\brepeat\b/i.test(text)) return false;
+      done = true;
+      this.stop();
+      onReplay();
+      return true;
+    };
     recognizer.on("result", (message) => {
       if (id !== this.captureId) return;
       const text = message.result?.text?.trim() || "";
+      if (replay(text)) return;
       if (text) segments.push(text);
       if (finalRequested) {
         complete(segments.join(" "));
@@ -281,6 +292,7 @@ class LocalVoice {
     recognizer.on("partialresult", (message) => {
       if (id !== this.captureId) return;
       const partial = message.result?.partial || "";
+      if (replay(partial)) return;
       if (partial) {
         settled = false;
         clearTimeout(this.settleTimeout);
