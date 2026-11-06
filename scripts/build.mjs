@@ -13,6 +13,7 @@ for (const file of [
   "app.js",
   "speech.js",
   "wake-lock.js",
+  "radio.js",
   "mic-worklet.js",
   "vendor/vosk.js",
 ]) {

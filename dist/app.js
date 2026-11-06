@@ -201,6 +201,7 @@ function timings(call, wpm, effective) {
   return { events, duration: t };
 }
 let ctx,
+  radio,
   voiceReady = false,
   starting = false,
   running = false,
@@ -304,6 +305,10 @@ function stats() {
   $("streak").textContent = streak;
 }
 function silence() {
+  if (radio) {
+    radio.stop();
+    radio = null;
+  }
   for (const n of nodes) {
     try {
       n.stop();
@@ -326,13 +331,13 @@ async function audio() {
   if (ctx.state !== "running")
     throw Error("Audio is paused. Tap Start or Replay to enable it.");
 }
-function tone(hz, at, duration, level = 0.2) {
+function tone(hz, at, duration, level = 0.2, destination) {
   const osc = ctx.createOscillator(),
     gain = ctx.createGain();
   osc.frequency.value = hz;
   osc.connect(gain);
-  gain.connect(ctx.destination);
-  const volume = Number($("volume").value) / 100;
+  gain.connect(destination || ctx.destination);
+  const volume = destination ? 1 : Number($("volume").value) / 100;
   gain.gain.setValueAtTime(0, at);
   gain.gain.linearRampToValueAtTime(level * volume, at + 0.005);
   gain.gain.setValueAtTime(
@@ -374,7 +379,18 @@ async function play() {
     if (captureVoice) answerTurn(token, true);
     if (token !== epoch || !running) return;
     const start = ctx.currentTime + 0.15;
-    seq.events.forEach((e) => tone(+$("tone").value, start + e.at, e.duration));
+    const settings = {
+      staticLevel: +$("staticLevel").value,
+      interference: +$("interference").value,
+      fading: +$("fading").value,
+      volume: +$("volume").value / 100,
+      hz: +$("tone").value,
+    };
+    if (settings.staticLevel || settings.interference || settings.fading)
+      radio = new RadioEnvironment(ctx, start, seq.duration, settings);
+    seq.events.forEach((e) =>
+      tone(settings.hz, start + e.at, e.duration, 0.2, radio?.input),
+    );
     await delay((seq.duration + 0.4) * 1000);
     if (token !== epoch || !running) return;
     if (
@@ -608,7 +624,11 @@ $("reveal").onclick = () => {
   $("feedback").textContent =
     "Reveal counted as a miss. Keep practicing this call sign.";
 };
-for (const name of ["speed", "spacing", "tone", "volume"]) {
+const settingIds = [
+  "speed", "spacing", "tone", "volume", "staticLevel", "interference", "fading",
+  "format", "inputMode",
+];
+for (const name of settingIds.filter((id) => !["format", "inputMode"].includes(id))) {
   $(name).oninput = () => {
     if (name === "speed") {
       $("spacing").max = $("speed").value;
@@ -619,6 +639,8 @@ for (const name of ["speed", "spacing", "tone", "volume"]) {
     $("spacingValue").textContent = $("spacing").value;
     $("toneValue").textContent = $("tone").value;
     $("volumeValue").textContent = $("volume").value;
+    for (const id of ["staticLevel", "interference", "fading"])
+      $(id + "Value").textContent = $(id).value || "0";
     saveSettings();
   };
 }
@@ -628,7 +650,7 @@ function saveSettings() {
       "morse-copy-settings",
       JSON.stringify(
         Object.fromEntries(
-          ["speed", "spacing", "tone", "volume", "format", "inputMode"].map(
+          settingIds.map(
             (id) => [id, $(id).value],
           ),
         ),
@@ -642,14 +664,7 @@ try {
   );
   if (saved) {
     if (saved.speed) $("spacing").max = saved.speed;
-    for (const id of [
-      "speed",
-      "spacing",
-      "tone",
-      "volume",
-      "format",
-      "inputMode",
-    ])
+    for (const id of settingIds)
       if (saved[id] !== undefined) $(id).value = saved[id];
     $("speed").oninput();
   }

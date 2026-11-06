@@ -11,6 +11,7 @@ The actual static HTML, CSS, JavaScript, vendored Vosk engine, and five speech-m
 The migrated app source is formatted for readability and preserves:
 
 - Web Audio Morse playback, speed/spacing/tone controls, and feedback sounds.
+- Optional HF static (filtered hiss and crackles), interference (nearby CW and a drifting carrier), and signal fading with a different strength on each playback. Expand **Radio environment** in Station settings; each effect has its own 0–100% control and defaults to off. Effects follow the volume setting, run during call sign playback including letter gaps, and stop when playback ends or practice is interrupted. Settings are remembered and apply to the next playback.
 - On-device Vosk recognition, with both Nancy and November mapping to N.
 - Concurrent listening during Morse playback, with scoring after playback completes.
 - Screen wake lock during practice and model loading, release on completion/hide, and retry support.

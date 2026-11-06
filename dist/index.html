@@ -132,6 +132,19 @@
             >Volume
             <b><span id="volumeValue">65</span><small>%</small></b></label
           ><input type="range" id="volume" min="0" max="100" value="65" />
+          <details class="radio-settings">
+            <summary>Radio environment · optional</summary>
+            <label class="control-label" for="staticLevel">HF static
+              <b><span id="staticLevelValue">0</span><small>%</small></b></label>
+            <input type="range" id="staticLevel" min="0" max="100" value="0" />
+            <label class="control-label" for="interference">Interference
+              <b><span id="interferenceValue">0</span><small>%</small></b></label>
+            <input type="range" id="interference" min="0" max="100" value="0" />
+            <label class="control-label" for="fading">Signal fading
+              <b><span id="fadingValue">0</span><small>%</small></b></label>
+            <input type="range" id="fading" min="0" max="100" value="0" />
+            <p class="hint">Hiss and static crashes, nearby CW and a wandering carrier, and changing signal strength. All at 0 gives clean audio. Applies to the next playback.</p>
+          </details>
           <div class="select-row">
             <label for="format">Call sign format</label
             ><select id="format">
@@ -235,6 +248,7 @@
     <script src="vendor/vosk.js"></script>
     <script src="speech.js"></script>
     <script src="wake-lock.js"></script>
+    <script src="radio.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

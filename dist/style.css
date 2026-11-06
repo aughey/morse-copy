@@ -435,6 +435,16 @@ details {
 details p {
   max-width: 800px;
 }
+.radio-settings {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 14px 0;
+  margin: 20px 0;
+}
+.radio-settings summary {
+  cursor: pointer;
+  color: var(--green);
+}
 summary {
   width: fit-content;
 }
