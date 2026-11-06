@@ -140,42 +140,32 @@ function randomInt(n) {
   crypto.getRandomValues(a);
   return Math.floor((a[0] / 4294967296) * n);
 }
-function generateCall(format) {
-  let f = format === "mixed" ? ["short", "long", "two"][randomInt(3)] : format;
+// Practice prefixes, not a registry of assigned stations.
+// Sources: arrl.org/international-call-sign-series and RSGB international-prefixes.
+const INTERNATIONAL_PREFIXES = {
+  one: ["F", "G", "M", "I"],
+  two: [
+    "VE", "VA", "DL", "JA", "VK", "ZL", "EA", "EI", "ON", "PA",
+    "OZ", "SM", "OH", "SP", "OK", "OM", "HA", "HB", "OE", "CT",
+    "PY", "LU", "CE", "ZS", "VU", "HL", "BY", "9A", "9H", "S5",
+  ],
+};
+function generateCall(format, includeInternational = true) {
+  const f = format === "mixed" ? ["short", "long", "two"][randomInt(3)] : format;
   const letter = () => String.fromCharCode(65 + randomInt(26));
-  const prefix =
-    f === "two"
-      ? [
-          "KA",
-          "KB",
-          "KC",
-          "KD",
-          "KE",
-          "KF",
-          "KG",
-          "KI",
-          "KJ",
-          "KK",
-          "KL",
-          "KM",
-          "KN",
-          "KO",
-          "KP",
-          "KQ",
-          "KR",
-          "KS",
-          "KT",
-          "KU",
-          "KV",
-          "KW",
-          "KX",
-          "KY",
-          "KZ",
-          "WA",
-          "WB",
-          "WD",
-        ][randomInt(28)]
-      : ["K", "N", "W"][randomInt(3)];
+  const pick = (items) => items[randomInt(items.length)];
+  // Give international calls half the practice, regardless of prefix pool size.
+  const international = includeInternational && randomInt(2) === 1;
+  let prefix;
+  if (international) {
+    prefix = pick(INTERNATIONAL_PREFIXES[f === "two" ? "two" : "one"]);
+  } else if (f === "two") {
+    // Balance initial letters so K prefixes don't drown out Alpha and November.
+    const first = pick(["A", "K", "N", "W"]);
+    prefix = first + (first === "A" ? pick("ABCDEFGHIJKL") : letter());
+  } else {
+    prefix = pick(["K", "N", "W"]);
+  }
   return (
     prefix +
     randomInt(10) +
@@ -548,7 +538,7 @@ async function check(spoken) {
 function newCall() {
   let next;
   do {
-    next = generateCall($("format").value);
+    next = generateCall($("format").value, $("includeInternational").value !== "no");
   } while (next === lastCall);
   current = next;
   lastCall = next;
@@ -644,9 +634,9 @@ $("reveal").onclick = () => {
 };
 const settingIds = [
   "speed", "spacing", "tone", "volume", "staticLevel", "interference", "fading",
-  "format", "inputMode",
+  "format", "inputMode", "includeInternational",
 ];
-for (const name of settingIds.filter((id) => !["format", "inputMode"].includes(id))) {
+for (const name of settingIds.filter((id) => !["format", "inputMode", "includeInternational"].includes(id))) {
   $(name).oninput = () => {
     if (name === "speed") {
       $("spacing").max = $("speed").value;
@@ -688,6 +678,7 @@ try {
   }
 } catch {}
 $("format").onchange = saveSettings;
+$("includeInternational").onchange = saveSettings;
 function updateVoiceMode() {
   const voice = $("inputMode").value === "voice";
   $("modeBadge").textContent = voice ? "VOSK · ON DEVICE" : "KEYBOARD";

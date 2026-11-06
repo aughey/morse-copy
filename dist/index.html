@@ -146,9 +146,17 @@
             <p class="hint">Hiss and static crashes, nearby CW and a wandering carrier, and changing signal strength. All at 0 gives clean audio. Applies to the next playback.</p>
           </details>
           <div class="select-row">
+            <label for="includeInternational">Include international call signs</label>
+            <select id="includeInternational" aria-describedby="internationalHint">
+              <option value="yes" selected>On · US + international</option>
+              <option value="no">Off · US only</option>
+            </select>
+          </div>
+          <p class="hint" id="internationalHint">Practice a roughly even mix of US and international prefixes. Applies to the next call sign.</p>
+          <div class="select-row">
             <label for="format">Call sign format</label
             ><select id="format">
-              <option value="mixed">Mixed US formats</option>
+              <option value="mixed">Mixed formats</option>
               <option value="short">1 × 2 · K1AB</option>
               <option value="long">1 × 3 · W1ABC</option>
               <option value="two">2 × 3 · KA1ABC</option>
@@ -232,7 +240,7 @@
         </p>
         <p>
           Use headphones for clearer recognition while Morse plays, and keep
-          this page in the foreground. These are randomly generated US-style
+          this page in the foreground. These are randomly generated US and international-style
           practice call signs, not a registry of assigned stations. Settings
           apply to the next playback. Revealing a call sign counts as a miss.
         </p>
