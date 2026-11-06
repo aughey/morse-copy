@@ -154,12 +154,17 @@ function generateCall(format, includeInternational = true) {
   const f = format === "mixed" ? ["short", "long", "two"][randomInt(3)] : format;
   const letter = () => String.fromCharCode(65 + randomInt(26));
   const pick = (items) => items[randomInt(items.length)];
+  const practice = /^practice-([12])-([123])$/.exec(f);
+  const prefixLength = practice ? 1 + randomInt(+practice[1]) : f === "two" ? 2 : 1;
+  const suffixLength = practice ? 1 + randomInt(+practice[2]) : f === "short" ? 2 : 3;
   // Give international calls half the practice, regardless of prefix pool size.
   const international = includeInternational && randomInt(2) === 1;
   let prefix;
   if (international) {
-    prefix = pick(INTERNATIONAL_PREFIXES[f === "two" ? "two" : "one"]);
-  } else if (f === "two") {
+    const prefixes = INTERNATIONAL_PREFIXES[prefixLength === 2 ? "two" : "one"];
+    // Head-copy practice always has letters around exactly one digit.
+    prefix = pick(practice ? prefixes.filter((p) => /^[A-Z]+$/.test(p)) : prefixes);
+  } else if (prefixLength === 2) {
     // Balance initial letters so K prefixes don't drown out Alpha and November.
     const first = pick(["A", "K", "N", "W"]);
     prefix = first + (first === "A" ? pick("ABCDEFGHIJKL") : letter());
@@ -169,7 +174,7 @@ function generateCall(format, includeInternational = true) {
   return (
     prefix +
     randomInt(10) +
-    Array.from({ length: f === "short" ? 2 : 3 }, letter).join("")
+    Array.from({ length: suffixLength }, letter).join("")
   );
 }
 function timings(call, wpm, effective) {

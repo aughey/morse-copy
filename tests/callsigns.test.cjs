@@ -87,3 +87,40 @@ test("international setting defaults on for new and existing users and remembers
   assert.equal(reload.get("includeInternational").value, "no");
   assert.equal(reload.get("speed").value, "23");
 });
+
+test("head-copy formats cover every allowed length with exactly one digit", () => {
+  for (const includeInternational of ["yes", "no"]) {
+    const h = harness();
+    h.get("includeInternational").value = includeInternational;
+    for (const maxPrefix of [1, 2]) {
+      for (const maxSuffix of [1, 2, 3]) {
+        const format = `practice-${maxPrefix}-${maxSuffix}`;
+        assert(html.includes(`value="${format}"`));
+        h.get("format").value = format;
+        const calls = h.run("Array.from({length: 4000}, () => { newCall(); return current; })");
+        const shapes = new Set();
+        const digits = new Set();
+        let international = 0;
+        for (let i = 0; i < calls.length; i++) {
+          const call = calls[i];
+          assert.match(call, new RegExp(`^[A-Z]{1,${maxPrefix}}\\d[A-Z]{1,${maxSuffix}}$`));
+          const [, prefix, digit, suffix] = call.match(/^([A-Z]+)(\d)([A-Z]+)$/);
+          shapes.add(`${prefix.length}-${suffix.length}`);
+          digits.add(digit);
+          if (!/^(?:[KNW]|A[A-L]|[KNW][A-Z])$/.test(prefix)) international++;
+          if (i) assert.notEqual(call, calls[i - 1]);
+        }
+        assert.equal(shapes.size, maxPrefix * maxSuffix, format);
+        assert.equal(digits.size, 10, format);
+        if (includeInternational === "yes") {
+          assert(international > 1600 && international < 2400, `${format}: ${international}`);
+        } else {
+          assert.equal(international, 0, format);
+        }
+        h.run("timings(current, 18, 12)");
+        h.get("format").onchange();
+        assert.equal(harness(h.stored()).get("format").value, format);
+      }
+    }
+  }
+});
