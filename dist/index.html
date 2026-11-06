@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#153e36" />
     <meta
       name="description"
-      content="Practice copying Morse call signs by ear. Answer aloud with on-device speech recognition."
+      content="Practice copying Morse call signs by ear. Answer with voice, an external audio keyer, or your keyboard."
     />
     <title>Morse Copy — call sign practice</title>
     <link rel="stylesheet" href="style.css" />
@@ -21,6 +21,7 @@
         <li><strong>Click Start practice.</strong> Allow microphone access when asked. Listen to the call sign in Morse and write it on your paper.</li>
         <li><strong>Say the call sign aloud.</strong> You can use letters, numbers, and phonetic words, or mix them. For example, say “K one A B C” or “Kilo one Alpha Bravo Charlie.” Use phonetic spelling to help voice recognition distinguish letters that sound alike.</li>
       </ol>
+      <p>Prefer to send your answer in Morse? Choose <b>External keyer · Morse audio</b> under <b>Answer with</b>. Place the microphone near your keyer’s speaker and send the call sign after playback ends. Correct copies advance automatically; a pause checks other copies. Voice and Keyboard remain separate options.</p>
       <p>A happy sound means you got it right, and the next call sign follows automatically. A different tone means try again, and the same call sign plays again.</p>
       <p class="welcome-repeat">Need another listen? Say <strong>“repeat”</strong> to replay the call sign immediately, even while it’s playing. No typing needed.</p>
       <p>Practice and voice recognition run entirely in your web browser. Your microphone audio and spoken answers stay on your device and are never sent to a server.</p>
@@ -39,7 +40,7 @@
         <div>
           <div class="eyebrow">TUNE IN. COPY. REPEAT.</div>
           <h1>Good copy starts<br />with a little listening.</h1>
-          <p>Hear a call sign. Say it back. Find your rhythm.</p>
+          <p>Hear a call sign. Copy it back. Find your rhythm.</p>
         </div>
         <div class="intro-art" aria-hidden="true">
           <svg viewBox="0 0 280 130">
@@ -201,9 +202,11 @@
             ><select id="inputMode">
               <option value="voice">Voice</option>
               <option value="type">Keyboard</option>
+              <option value="keyer">External keyer · Morse audio</option>
             </select>
           </div>
-          <div class="voice-box">
+          <p class="hint" id="keyerInfo" hidden>Place the computer microphone near your external keyer’s speaker. After practice playback ends, send the call sign in Morse. A correct copy scores as soon as it is decoded; otherwise a pause of about 1.8 seconds triggers a check. Use a keyer tone between 400 and 1200 Hz. DeepCW decodes locally; first use loads about 26 MB, independently of voice. Each answer has a 60-second limit. Use headphones for practice audio and a quiet room.</p>
+          <div class="voice-box" id="voiceBox">
             <span id="voiceIcon">◉</span>
             <div>
               <strong id="voiceTitle">Checking voice support…</strong>
@@ -229,7 +232,7 @@
           <div class="eyebrow">THE RHYTHM IS SIMPLE</div>
           <div class="steps">
             <span><i>01</i> Listen closely</span
-            ><span><i>02</i> Say your copy</span
+            ><span><i>02</i> Answer your copy</span
             ><span><i>03</i> Keep going</span>
           </div>
           <p>
@@ -289,6 +292,8 @@
           <a href="vendor/NOTICE.txt">Open-source notices</a> ·
           <a href="vendor/LICENSE-APACHE-2.0.txt">Apache 2.0 license</a>
         </p>
+        <p>External keyer mode uses <a href="https://github.com/e04/deepcw-engine">DeepCW</a> with ONNX Runtime Web, running on this device. The microphone is connected during the session but Morse decoding starts only after playback ends, and stops during feedback and repeat playback. It does not load or use the speech model. A complete correct call sign scores immediately when decoded. Other answers are checked after about 1.8 seconds without keyer tones or new decoded letters. Long pauses can submit a partial answer; keep the call sign together. Ending practice, hiding the page, or changing answer mode releases the microphone.
+          <a href="vendor/LICENSE-DEEPCW.txt">DeepCW license</a> · <a href="vendor/ort/LICENSE.txt">ONNX Runtime license</a></p>
       </details>
     </main>
     <footer>
@@ -298,6 +303,7 @@
     </footer>
     <script src="vendor/vosk.js"></script>
     <script src="speech.js"></script>
+    <script src="keyer.js"></script>
     <script src="wake-lock.js"></script>
     <script src="radio.js"></script>
     <script src="app.js"></script>

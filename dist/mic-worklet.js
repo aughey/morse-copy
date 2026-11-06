@@ -6,6 +6,18 @@ class MorseMicrophone extends AudioWorkletProcessor {
     this.buffer = new Float32Array(2048);
     this.offset = 0;
     this.port.onmessage = ({ data }) => {
+      if (data.flush !== undefined) {
+        if (this.active === data.flush) {
+          if (this.offset) {
+            const samples = this.buffer.slice(0, this.offset);
+            this.port.postMessage({ id: this.active, samples }, [samples.buffer]);
+          }
+          this.port.postMessage({ flushed: this.active });
+          this.active = null;
+          this.offset = 0;
+        }
+        return;
+      }
       this.active = data.active;
       this.offset = 0;
     };

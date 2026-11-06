@@ -198,6 +198,7 @@ function timings(call, wpm, effective) {
 }
 let ctx,
   radio,
+  localKeyer,
   voiceReady = false,
   starting = false,
   running = false,
@@ -277,7 +278,7 @@ function setPhase(next, title, instruction) {
   $("headline").textContent = title;
   $("instruction").textContent = instruction;
   const names = {
-    loading: "Preparing local voice",
+    loading: $("inputMode").value === "keyer" ? "Preparing local Morse decoder" : "Preparing local voice",
     idle: "Standing by",
     playing:
       $("inputMode").value === "voice"
@@ -320,6 +321,7 @@ function silence() {
 }
 function stopListening() {
   localVoice.stop();
+  localKeyer?.stop();
 }
 function invalidate() {
   epoch++;
@@ -422,9 +424,11 @@ async function play() {
 function keyboardTurn(message) {
   stopListening();
   localVoice.closeMicrophone();
+  localKeyer?.closeMicrophone();
   $("inputMode").value = "type";
   $("modeBadge").textContent = "KEYBOARD";
   $("inputNote").textContent = "Type the complete call sign, then press Enter.";
+  updateVoiceMode();
   setPhase(
     "typing",
     "What did you hear?",
@@ -434,6 +438,10 @@ function keyboardTurn(message) {
   $("answer").focus();
 }
 function answerTurn(token, duringPlayback = false) {
+  if ($("inputMode").value === "keyer") {
+    keyerTurn(token);
+    return;
+  }
   if ($("inputMode").value === "type" || !voiceReady) {
     keyboardTurn();
     return;
@@ -492,9 +500,33 @@ function answerTurn(token, duringPlayback = false) {
     if (valid()) keyboardTurn(error.message);
   }
 }
-async function check(spoken) {
+function keyerTurn(token) {
+  setPhase("listening", "Your turn. Send your copy.",
+    "Send the call sign on your external keyer. Your answer is checked automatically.");
+  $("feedback").textContent = "Listening for keyer audio. Keep the microphone near its speaker.";
+  const valid = () => token === epoch && running;
+  try {
+    localKeyer.listen({
+      isComplete: (text) => valid() && text.toUpperCase().replace(/\s/g, "") === current,
+      onPartial: (text) => {
+        if (valid()) $("feedback").textContent = text ? "Decoding: " + text : "Listening for Morse…";
+      },
+      onResult: (text) => { if (valid()) check(text, true); },
+      onEmpty: () => {
+        if (!valid()) return;
+        $("feedback").textContent = "No Morse decoded. No attempt counted. Tap Repeat to try again.";
+      },
+      onError: (error) => {
+        if (valid()) keyboardTurn(error.message + " Continue with the keyboard, or restart keyer practice.");
+      },
+    });
+  } catch (error) {
+    if (valid()) keyboardTurn(error.message);
+  }
+}
+async function check(spoken, morse = false) {
   if (!running) return;
-  const copy = normalize(spoken || "");
+  const copy = morse ? (spoken || "").toUpperCase().replace(/\s/g, "") : normalize(spoken || "");
   if (
     !["typing", "listening"].includes(phase) &&
     !(phase === "playing" && copy === current)
@@ -561,6 +593,7 @@ function endSession() {
   syncKeepAwake();
   invalidate();
   localVoice.closeMicrophone();
+  localKeyer?.closeMicrophone();
   $("answerForm").hidden = true;
   setPhase(
     "paused",
@@ -593,6 +626,17 @@ $("start").onclick = async () => {
       $("feedback").textContent =
         "Allow microphone access to begin. Audio stays on your device.";
       const opened = await localVoice.openMicrophone(ctx);
+      if (token !== epoch || !opened) return;
+    }
+    if ($("inputMode").value === "keyer") {
+      localKeyer ||= new LocalKeyer();
+      if (!localKeyer.supported) throw Error("Keyer audio needs microphone access, WebAssembly, and AudioWorklet support. Select Keyboard to practice here.");
+      setPhase("loading", "Getting your keyer station ready.",
+        "Loading DeepCW and its runtime, about 26 MB on first use. Audio stays on this device.");
+      await localKeyer.load();
+      if (token !== epoch) return;
+      $("feedback").textContent = "Allow microphone access, then wait for your turn to send.";
+      const opened = await localKeyer.openMicrophone(ctx);
       if (token !== epoch || !opened) return;
     }
     if (token !== epoch) return;
@@ -686,13 +730,20 @@ $("format").onchange = saveSettings;
 $("includeInternational").onchange = saveSettings;
 function updateVoiceMode() {
   const voice = $("inputMode").value === "voice";
-  $("modeBadge").textContent = voice ? "VOSK · ON DEVICE" : "KEYBOARD";
-  $("answerSummary").textContent = voice ? "Voice" : "Keyboard";
-  $("inputNote").textContent = voice
+  const keyer = $("inputMode").value === "keyer";
+  $("modeBadge").textContent = keyer ? "DEEPCW · ON DEVICE" : voice ? "VOSK · ON DEVICE" : "KEYBOARD";
+  $("answerSummary").textContent = keyer ? "External keyer" : voice ? "Voice" : "Keyboard";
+  $("keyerInfo").hidden = !keyer;
+  $("voiceBox").hidden = !voice;
+  $("inputNote").textContent = keyer
+    ? "Keyer audio is decoded locally after playback. Answers are checked automatically."
+    : voice
     ? "Listening during Morse and your answer. Audio stays local."
     : "Type the complete call sign, then press Enter.";
   if (!running && !starting && phase === "idle")
-    $("instruction").textContent = voice
+    $("instruction").textContent = keyer
+      ? "Press start, listen, then send the call sign with your external keyer."
+      : voice
       ? "Press start and speak the letters as Morse plays, or answer afterwards."
       : "Press start, listen to the Morse code, then type the letters and numbers.";
 }
@@ -747,4 +798,5 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("pagehide", () => {
   screenAwake.setActive(false);
   localVoice.closeMicrophone();
+  localKeyer?.closeMicrophone();
 });

@@ -1,6 +1,6 @@
 # Morse Copy
 
-Practice copying Morse call signs by ear, using voice or keyboard answers.
+Practice copying Morse call signs by ear, using voice, an external audio keyer, or keyboard answers.
 
 **Live app:** https://aughey.github.io/morse-copy/
 
@@ -18,11 +18,18 @@ The migrated app source is formatted for readability and preserves:
 - **Call sign format** and **Answer with** are collapsed by default, like Radio environment. Expand them to adjust call generation or input options.
 - On-device Vosk recognition, with Nancy/November mapping to N and Sugar/Sierra mapping to S. Saying “repeat” replays immediately, including during playback, without counting an attempt.
 - Concurrent listening during Morse playback. A complete, correct spoken call sign scores immediately without waiting for silence, even during playback; other answers are scored after playback completes and speech settles.
+- **Answer with → External keyer · Morse audio** listens through the computer microphone for your keyer’s speaker. Wait for practice playback to finish, then send the received call sign in Morse. Decoded letters appear live. A complete matching copy scores immediately; otherwise about 1.8 seconds without keyer tones or new decoded letters triggers a check. No clicks are needed between call signs. Long pauses can submit a partial answer. A 60-second limit finishes each answer; empty decoding counts no attempt. Repeat, Reveal, End practice, mode changes, and page hiding cancel pending results. Voice remains an independent option.
 - Screen wake lock during practice and model loading, release on completion/hide, and retry support.
 
 All URLs are relative so assets and microphone worklets work under `/morse-copy/`. Voice initially downloads approximately 40 MB from the same site; the browser caches the extracted model. Speech audio is processed locally.
 
 Radio effects set to 0 are omitted from the audio processing chain: no corresponding noise buffers, oscillators, filters, or fading automation are created. With all three at 0, Morse uses the direct clean-audio path. Changes apply on the next playback.
+
+## Answer with an external keyer
+
+Expand **Answer with**, select **External keyer · Morse audio**, and start practice. Allow microphone access and place the microphone near the keyer’s speaker. Use a steady sidetone from **400–1200 Hz**, a quiet room, and headphones for the practice audio. Once playback finishes, key the call sign back. Correct calls advance automatically; incomplete or incorrect copies are checked after a pause and the same practice call is replayed.
+
+This mode uses the wide-band [DeepCW model](https://github.com/e04/deepcw-engine) and ONNX Runtime Web in a dedicated worker, independently of Vosk. The model and runtime load only when keyer practice starts, approximately 26 MB before transfer compression. All assets are served from this site; microphone audio stays on the device. Browser HTTP caching may avoid repeat downloads. Microphone speech enhancement is disabled to preserve CW tones. Decoding is gated off during practice playback and feedback so the app does not score its own audio. Actual accuracy and silence detection depend on keyer volume, room noise, timing, and device performance.
 
 ## Develop and verify
 
@@ -36,7 +43,7 @@ python3 -m http.server 8000 --directory _site
 
 Open http://localhost:8000/ to practice locally. Browser microphone and wake lock access require a secure context (HTTPS or localhost), browser support, and the applicable permissions. Device power settings can affect wake lock availability.
 
-The build checks JavaScript syntax, relative HTML asset links, and every model part's size and SHA-256 before copying the original assets into `_site/`.
+The build checks JavaScript syntax, relative HTML asset links, speech model parts, and pinned DeepCW/ONNX assets against recorded sizes and SHA-256 hashes before copying the assets into `_site/`.
 
 ## GitHub Pages CI/CD
 
@@ -46,8 +53,10 @@ The repository's Pages publishing source must be **GitHub Actions**. Deployment 
 
 ## Tests and browser verification
 
-`tests/` covers recognition lifecycle, concurrent playback/capture, Nancy/November normalization, microphone cleanup, Morse timing, and wake lock lifecycle. Tests simulate browser APIs; actual microphone accuracy, audible playback, and device sleep behavior need a supported browser and real device. See `tests/README.md` for the original speech-engine integration harness.
+`tests/` covers recognition lifecycle, concurrent playback/capture, Nancy/November normalization, microphone cleanup, Morse timing, wake lock lifecycle, automatic keyer completion, silence handling, tone detection, final audio flushing, and decoding cancellation. Tests simulate browser APIs; actual microphone accuracy, audible playback, and device sleep behavior need a supported browser and real device. See `tests/README.md` for browser integration harnesses.
 
 ## Third-party notices
 
 Bundled Vosk components and the English model retain their Apache 2.0 license and attribution in `dist/vendor/NOTICE.txt` and `dist/vendor/LICENSE-APACHE-2.0.txt`. `scripts/patch-vosk.py` and `scripts/model-fetch-worker.js` preserve the original streaming model adapter. The original Sites hosting manifest was removed because GitHub Pages does not use it.
+
+DeepCW model, metadata, and adapted decoder: e04/deepcw-engine commit `79104fbe1ea0abd09eb27c6ebf9c6bab364d0d7f`, MIT, with its license in `dist/vendor/LICENSE-DEEPCW.txt`. The browser adapter retains the upstream spectrogram normalization, CTC decoder, and posterior stitching; DFT trigonometry is cached for repeated windows. ONNX Runtime Web `1.22.0` is vendored from its npm distribution, with its MIT license and third-party notices in `dist/vendor/ort/`. `dist/models/deepcw-manifest.json` records provenance and asset hashes.

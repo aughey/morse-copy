@@ -13,6 +13,9 @@ for (const file of [
   "app.js",
   "welcome.js",
   "speech.js",
+  "keyer.js",
+  "deepcw-core.js",
+  "deepcw-worker.js",
   "wake-lock.js",
   "radio.js",
   "mic-worklet.js",
@@ -43,10 +46,16 @@ for (const part of manifest.parts) {
 }
 if (total !== manifest.bytes)
   throw new Error("Speech model total size does not match manifest");
+const keyerManifest = JSON.parse(await readFile(resolve(source, "models/deepcw-manifest.json"), "utf8"));
+for (const file of keyerManifest.files) {
+  const bytes = await readFile(resolve(source, file.file));
+  if (bytes.length !== file.bytes || createHash("sha256").update(bytes).digest("hex") !== file.sha256)
+    throw new Error(`DeepCW asset integrity check failed: ${file.file}`);
+}
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 await cp(source, output, { recursive: true });
 await writeFile(resolve(output, ".nojekyll"), "");
 console.log(
-  `Built _site with original app assets and ${total} verified speech model bytes.`,
+  `Built _site with ${total} verified speech model bytes and verified DeepCW/runtime assets.`,
 );
