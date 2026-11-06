@@ -93,4 +93,23 @@ test("practice starts voice capture before the first Morse tone and retains it a
   const replayCount = events.filter((e) => e === "replay").length;
   vm.runInContext("invalidate();localVoice.callbacks.onReplay()", box);
   assert.equal(events.filter((e) => e === "replay").length, replayCount);
+
+  // A correct live copy can score during playback and advance the call once.
+  vm.runInContext("answerTurn(epoch, true)", box);
+  for (const text of ["nancy one alpha bravo", "november one alpha bravo", "N1AB"])
+    assert.equal(vm.runInContext(`localVoice.callbacks.isComplete(${JSON.stringify(text)})`, box), true);
+  for (const text of ["nancy one alpha", "nancy one alpha charlie", "nancy one alpha bravo charlie"])
+    assert.equal(vm.runInContext(`localVoice.callbacks.isComplete(${JSON.stringify(text)})`, box), false);
+  vm.runInContext("localVoice.callbacks.onResult('nancy one alpha bravo')", box);
+  await new Promise((r) => setImmediate(r));
+  assert.equal(vm.runInContext("phase", box), "feedback");
+  assert.equal(vm.runInContext("total", box), 5);
+  assert.equal(vm.runInContext("correct", box), 4);
+  assert.equal(get("feedback").textContent, "Your copy: N1AB · Correct");
+  vm.runInContext("localVoice.callbacks.onResult('nancy one alpha bravo')", box);
+  assert.equal(vm.runInContext("total", box), 5);
+  vm.runInContext("newCall=()=>events.push('next-call')", box);
+  finishAudio();
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(events.slice(-2), ["next-call", "replay"]);
 });

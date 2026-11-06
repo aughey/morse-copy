@@ -241,7 +241,7 @@ class LocalVoice {
       throw error;
     }
   }
-  listen({ onResult, onPartial, onEmpty, onError, onReplay, deferResult = false }) {
+  listen({ onResult, onPartial, onEmpty, onError, onReplay, isComplete, deferResult = false }) {
     this.stop();
     if (!this.model?.ready || !this.stream?.active)
       throw new Error("Local voice is not ready. Restart practice.");
@@ -271,11 +271,18 @@ class LocalVoice {
       onReplay();
       return true;
     };
+    // A complete correct copy bypasses silence and playback deferral too.
+    const completeCopy = (text) => {
+      if (!text || !isComplete?.(text)) return false;
+      complete(text);
+      return true;
+    };
     recognizer.on("result", (message) => {
       if (id !== this.captureId) return;
       const text = message.result?.text?.trim() || "";
       if (replay(text)) return;
       if (text) segments.push(text);
+      if (completeCopy(segments.join(" "))) return;
       if (finalRequested) {
         complete(segments.join(" "));
         return;
@@ -293,11 +300,13 @@ class LocalVoice {
       if (id !== this.captureId) return;
       const partial = message.result?.partial || "";
       if (replay(partial)) return;
+      const text = [...segments, partial].filter(Boolean).join(" ");
+      if (completeCopy(text)) return;
       if (partial) {
         settled = false;
         clearTimeout(this.settleTimeout);
       }
-      onPartial([...segments, partial].filter(Boolean).join(" "));
+      onPartial(text);
     });
     recognizer.on("error", (message) => {
       if (id === this.captureId) {
@@ -323,7 +332,7 @@ class LocalVoice {
       }, 18000);
     };
     // Collect everything spoken during Morse, including pauses between letters.
-    // Score only after playback ends, and allow a full answer window afterwards.
+    // Defer other answers until playback ends, with a full answer window afterwards.
     this.finishPlayback = () => {
       if (id !== this.captureId || canComplete) return;
       canComplete = true;

@@ -455,6 +455,7 @@ function answerTurn(token, duringPlayback = false) {
   try {
     localVoice.listen({
       deferResult: duringPlayback,
+      isComplete: (text) => valid() && normalize(text) === current,
       onReplay: () => {
         if (valid()) play();
       },
@@ -491,12 +492,16 @@ function answerTurn(token, duringPlayback = false) {
   }
 }
 async function check(spoken) {
-  if (!running || !["typing", "listening"].includes(phase)) return;
+  if (!running) return;
+  const copy = normalize(spoken || "");
+  if (
+    !["typing", "listening"].includes(phase) &&
+    !(phase === "playing" && copy === current)
+  ) return;
   if (/\brepeat\b/i.test(spoken || "")) {
     play();
     return;
   }
-  const copy = normalize(spoken || "");
   if (!copy) return;
   const token = invalidate();
   const good = copy === current;

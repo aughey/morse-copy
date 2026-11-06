@@ -13,7 +13,7 @@ The migrated app source is formatted for readability and preserves:
 - Web Audio Morse playback, speed/spacing/tone controls, and feedback sounds.
 - Optional HF static (filtered hiss and crackles), interference (nearby CW and a drifting carrier), and signal fading with a different strength on each playback. Expand **Radio environment** in Station settings; each effect has its own 0–100% control and defaults to off. Effects follow the volume setting, run during call sign playback including letter gaps, and stop when playback ends or practice is interrupted. Settings are remembered and apply to the next playback.
 - On-device Vosk recognition, with Nancy/November mapping to N and Sugar/Sierra mapping to S. Saying “repeat” replays immediately, including during playback, without counting an attempt.
-- Concurrent listening during Morse playback, with scoring after playback completes.
+- Concurrent listening during Morse playback. A complete, correct spoken call sign scores immediately without waiting for silence, even during playback; other answers are scored after playback completes and speech settles.
 - Screen wake lock during practice and model loading, release on completion/hide, and retry support.
 
 All URLs are relative so assets and microphone worklets work under `/morse-copy/`. Voice initially downloads approximately 40 MB from the same site; the browser caches the extracted model. Speech audio is processed locally.

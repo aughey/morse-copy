@@ -167,6 +167,51 @@ test("no-speech timeout flushes audio without submitting an empty answer", () =>
   assert.equal(answers, 0);
   assert.equal(timers.size, 0);
 });
+for (const event of ["partialresult", "result"]) {
+  for (const deferResult of [false, true]) {
+    test(`correct copy completes immediately on ${event}, deferred=${deferResult}`, () => {
+      const { voice, recognizers, timers } = setup();
+      const copies = [];
+      voice.listen({
+        deferResult,
+        isComplete: (text) => text === "nancy one alpha bravo",
+        onResult: (text) => copies.push(text),
+        onPartial() {},
+        onEmpty: () => assert.fail("Expected a complete answer"),
+        onError: () => assert.fail("Expected no error"),
+      });
+      const r = recognizers[0];
+      r.listeners.result({ result: { text: "nancy one" } });
+      r.listeners.partialresult({ result: { partial: "alpha" } });
+      assert.deepEqual(copies, []);
+      r.listeners[event]({ result: event === "partialresult"
+        ? { partial: "alpha bravo" }
+        : { text: "alpha bravo" } });
+      assert.deepEqual(copies, ["nancy one alpha bravo"]);
+      assert(r.removed);
+      assert.equal(voice.recognizer, null);
+      assert.equal(timers.size, 0);
+      r.listeners.result({ result: { text: "alpha bravo" } });
+      r.listeners.partialresult({ result: { partial: "alpha bravo" } });
+      assert.equal(copies.length, 1);
+    });
+  }
+}
+test("an incorrect live copy still waits for silence before submission", () => {
+  const { voice, recognizers, timers } = setup();
+  const copies = [];
+  voice.listen({
+    isComplete: (text) => text === "nancy one alpha bravo",
+    onResult: (text) => copies.push(text),
+    onPartial() {}, onEmpty() {}, onError() {},
+  });
+  const r = recognizers[0];
+  r.listeners.partialresult({ result: { partial: "nancy one alpha charlie" } });
+  r.listeners.result({ result: { text: "nancy one alpha charlie" } });
+  assert.deepEqual(copies, []);
+  timers.get(voice.settleTimeout)();
+  assert.deepEqual(copies, ["nancy one alpha charlie"]);
+});
 test("ending a session disconnects audio and stops microphone tracks", () => {
   const { voice } = setup();
   let stopped = 0,
