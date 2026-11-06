@@ -12,7 +12,7 @@ function setup(){
 }
 test('grammar is fixed and covers letters, digits and phonetic words',()=>{
  const {voice,recognizers}=setup();voice.listen({onResult(){},onPartial(){},onEmpty(){},onError(){}});
- const grammar=recognizers[0].grammar;for(const word of ['a','z','zero','nine','kilo','alpha','x ray','double you','[unk]'])assert(grammar.includes(word));assert(!grammar.some(word=>/\d/.test(word)));
+ const grammar=recognizers[0].grammar;for(const word of ['a','z','zero','nine','kilo','alpha','nancy','november','x ray','double you','[unk]'])assert(grammar.includes(word));assert(!grammar.some(word=>/\d/.test(word)));
 });
 test('final result submits once and releases the recognizer',()=>{
  const {voice,recognizers,timers}=setup();let copies=[];voice.listen({onResult:t=>copies.push(t),onPartial(){},onEmpty(){},onError(){}});
@@ -58,4 +58,38 @@ test('pauses between spoken letters accumulate into one answer',()=>{
  const r=recognizers[0];r.listeners.result({result:{text:'kilo one'}});const firstTimer=voice.settleTimeout;
  r.listeners.partialresult({result:{partial:'alpha'}});assert(!timers.has(firstTimer));assert.equal(answer,'');
  r.listeners.result({result:{text:'alpha bravo charlie'}});timers.get(voice.settleTimeout)();assert.equal(answer,'kilo one alpha bravo charlie');
+});
+
+test('speech collected during Morse playback is scored only after playback finishes',()=>{
+ const {voice,recognizers,timers}=setup();let answer='',partial='';
+ voice.listen({deferResult:true,onResult:t=>answer=t,onPartial:t=>partial=t,onEmpty(){},onError(){}});
+ assert.equal(voice.timeout,null);
+ const r=recognizers[0];r.listeners.result({result:{text:'nancy one'}});timers.get(voice.settleTimeout)();assert.equal(answer,'');
+ r.listeners.partialresult({result:{partial:'alpha'}});assert.equal(partial,'nancy one alpha');
+ r.listeners.result({result:{text:'alpha bravo'}});timers.get(voice.settleTimeout)();assert.equal(answer,'');
+ voice.finishPlayback();assert.equal(answer,'nancy one alpha bravo');assert(r.removed);
+});
+test('speech still in progress at the end of Morse is retained',()=>{
+ const {voice,recognizers,timers}=setup();let answer='';
+ voice.listen({deferResult:true,onResult:t=>answer=t,onPartial(){},onEmpty(){},onError(){}});
+ const r=recognizers[0];r.listeners.partialresult({result:{partial:'november one'}});
+ voice.finishPlayback();assert(voice.timeout);assert.equal(voice.recognizer,r);
+ r.listeners.result({result:{text:'november one alpha bravo'}});timers.get(voice.settleTimeout)();assert.equal(answer,'november one alpha bravo');
+});
+test('the no-speech deadline starts after Morse rather than before it',()=>{
+ const {voice,recognizers,timers}=setup();let empty=0;
+ voice.listen({deferResult:true,onResult(){},onPartial(){},onEmpty(){empty++},onError(){}});
+ assert.equal(voice.timeout,null);voice.finishPlayback();assert(voice.timeout);
+ timers.get(voice.timeout)();assert(recognizers[0].flushed);recognizers[0].listeners.result({result:{text:''}});assert.equal(empty,1);
+});
+test('stopping during Morse invalidates the deferred completion callback',()=>{
+ const {voice,recognizers}=setup();let answers=0;
+ voice.listen({deferResult:true,onResult(){answers++},onPartial(){},onEmpty(){},onError(){}});
+ const finish=voice.finishPlayback;voice.stop();finish();assert.equal(answers,0);assert.equal(voice.timeout,null);assert(recognizers[0].removed);
+});
+test('Nancy and November normalize to the same letter N',()=>{
+ const context={document:{getElementById(){}},crypto:require('node:crypto').webcrypto};vm.createContext(context);
+ vm.runInContext(fs.readFileSync('dist/app.js','utf8').split('let ctx,')[0],context);
+ assert.equal(vm.runInContext("normalize('Nancy one Alpha Bravo')",context),'N1AB');
+ assert.equal(vm.runInContext("normalize('November one Alpha Bravo')",context),'N1AB');
 });

@@ -1,4 +1,4 @@
-// Only send microphone samples during an answer window. Outputs stay silent.
+// Only send microphone samples during the active recognition window. Outputs stay silent.
 class MorseMicrophone extends AudioWorkletProcessor {
   constructor() {
     super(); this.active = null; this.buffer = new Float32Array(2048); this.offset = 0;

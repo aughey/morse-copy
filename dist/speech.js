@@ -4,7 +4,7 @@ const VOICE_VOCABULARY = [
   'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z',
   'zero','oh','one','two','three','four','five','six','seven','eight','nine','niner',
   'alpha','alfa','bravo','charlie','delta','echo','foxtrot','golf','hotel','india','juliet','juliett',
-  'kilo','lima','mike','november','oscar','papa','quebec','romeo','sierra','tango','uniform',
+  'kilo','lima','mike','november','nancy','oscar','papa','quebec','romeo','sierra','tango','uniform',
   'victor','whiskey','x ray','yankee','zulu','double you','double u','zed',
   'bee','see','dee','gee','jay','kay','el','em','en','pee','cue','are','ess','tee','you','vee','ex','why','zee','[unk]'
 ];
@@ -53,33 +53,44 @@ class LocalVoice {
       return true;
     } catch(error) { if(id===this.micId)this.closeMicrophone();else stream?.getTracks().forEach(t=>t.stop());throw error; }
   }
-  listen({onResult,onPartial,onEmpty,onError}) {
+  listen({onResult,onPartial,onEmpty,onError,deferResult=false}) {
     this.stop();
     if(!this.model?.ready||!this.stream?.active)throw new Error('Local voice is not ready. Restart practice.');
     const id=this.captureId;
     const recognizer=new this.model.KaldiRecognizer(this.context.sampleRate,JSON.stringify(VOICE_VOCABULARY));
     this.recognizer=recognizer;this.onError=onError;
-    let finalRequested=false,done=false,segments=[];
+    let finalRequested=false,done=false,segments=[],canComplete=!deferResult,settled=false;
     const complete=text=>{if(done||id!==this.captureId)return;done=true;this.stop();text?onResult(text):onEmpty();};
     recognizer.on('result',message=>{
       if(id!==this.captureId)return;
       const text=message.result?.text?.trim()||'';
       if(text)segments.push(text);
       if(finalRequested){complete(segments.join(' '));return;}
-      if(text){clearTimeout(this.settleTimeout);this.settleTimeout=setTimeout(()=>complete(segments.join(' ')),1200);}
+      if(text){settled=false;clearTimeout(this.settleTimeout);this.settleTimeout=setTimeout(()=>{settled=true;if(canComplete)complete(segments.join(' '));},1200);}
     });
     recognizer.on('partialresult',message=>{
       if(id!==this.captureId)return;
       const partial=message.result?.partial||'';
-      if(partial)clearTimeout(this.settleTimeout);
+      if(partial){settled=false;clearTimeout(this.settleTimeout);}
       onPartial([...segments,partial].filter(Boolean).join(' '));
     });
     recognizer.on('error',message=>{if(id===this.captureId){this.stop();onError(new Error(message.error||'Local recognition error'));}});
     this.node.port.postMessage({active:id});
-    this.timeout=setTimeout(()=>{if(id!==this.captureId)return;finalRequested=true;this.node.port.postMessage({active:null});recognizer.retrieveFinalResult();this.flushTimeout=setTimeout(()=>{if(id===this.captureId){this.stop();onError(new Error('Recognition took too long. Tap Replay to try again.'));}},8000);},18000);
+    const armTimeout=()=>{
+      this.timeout=setTimeout(()=>{if(id!==this.captureId)return;finalRequested=true;this.node.port.postMessage({active:null});recognizer.retrieveFinalResult();this.flushTimeout=setTimeout(()=>{if(id===this.captureId){this.stop();onError(new Error('Recognition took too long. Tap Replay to try again.'));}},8000);},18000);
+    };
+    // Collect everything spoken during Morse, including pauses between letters.
+    // Score only after playback ends, and allow a full answer window afterwards.
+    this.finishPlayback=()=>{
+      if(id!==this.captureId||canComplete)return;
+      canComplete=true;
+      if(settled&&segments.length)complete(segments.join(' '));
+      else armTimeout();
+    };
+    if(canComplete)armTimeout();
   }
   stop() {
-    this.captureId++; clearTimeout(this.timeout);clearTimeout(this.flushTimeout);clearTimeout(this.settleTimeout);
+    this.captureId++; clearTimeout(this.timeout);clearTimeout(this.flushTimeout);clearTimeout(this.settleTimeout);this.timeout=null;this.finishPlayback=null;
     this.node?.port.postMessage({active:null});
     if(this.recognizer){this.recognizer.remove();this.recognizer=null;}
   }

@@ -1,7 +1,7 @@
 'use strict';
 const $=id=>document.getElementById(id);
 const MORSE={A:'.-',B:'-...',C:'-.-.',D:'-..',E:'.',F:'..-.',G:'--.',H:'....',I:'..',J:'.---',K:'-.-',L:'.-..',M:'--',N:'-.',O:'---',P:'.--.',Q:'--.-',R:'.-.',S:'...',T:'-',U:'..-',V:'...-',W:'.--',X:'-..-',Y:'-.--',Z:'--..',0:'-----',1:'.----',2:'..---',3:'...--',4:'....-',5:'.....',6:'-....',7:'--...',8:'---..',9:'----.'};
-const WORDS={alpha:'A',alfa:'A',bravo:'B',charlie:'C',delta:'D',echo:'E',foxtrot:'F',golf:'G',hotel:'H',india:'I',juliet:'J',juliett:'J',kilo:'K',lima:'L',mike:'M',november:'N',oscar:'O',papa:'P',quebec:'Q',romeo:'R',sierra:'S',tango:'T',uniform:'U',victor:'V',whiskey:'W',whisky:'W',xray:'X',yankee:'Y',zulu:'Z',zero:'0',oh:'O',one:'1',won:'1',two:'2',too:'2',to:'2',three:'3',tree:'3',four:'4',for:'4',five:'5',fife:'5',six:'6',seven:'7',eight:'8',ate:'8',nine:'9',niner:'9',ay:'A',aye:'I',bee:'B',be:'B',cee:'C',see:'C',sea:'C',dee:'D',ee:'E',ef:'F',gee:'G',aitch:'H',jay:'J',kay:'K',el:'L',ell:'L',em:'M',en:'N',pee:'P',cue:'Q',queue:'Q',are:'R',ar:'R',ess:'S',tee:'T',tea:'T',you:'U',yew:'U',vee:'V',doubleyou:'W',ex:'X',why:'Y',zee:'Z',zed:'Z'};
+const WORDS={alpha:'A',alfa:'A',bravo:'B',charlie:'C',delta:'D',echo:'E',foxtrot:'F',golf:'G',hotel:'H',india:'I',juliet:'J',juliett:'J',kilo:'K',lima:'L',mike:'M',november:'N',nancy:'N',oscar:'O',papa:'P',quebec:'Q',romeo:'R',sierra:'S',tango:'T',uniform:'U',victor:'V',whiskey:'W',whisky:'W',xray:'X',yankee:'Y',zulu:'Z',zero:'0',oh:'O',one:'1',won:'1',two:'2',too:'2',to:'2',three:'3',tree:'3',four:'4',for:'4',five:'5',fife:'5',six:'6',seven:'7',eight:'8',ate:'8',nine:'9',niner:'9',ay:'A',aye:'I',bee:'B',be:'B',cee:'C',see:'C',sea:'C',dee:'D',ee:'E',ef:'F',gee:'G',aitch:'H',jay:'J',kay:'K',el:'L',ell:'L',em:'M',en:'N',pee:'P',cue:'Q',queue:'Q',are:'R',ar:'R',ess:'S',tee:'T',tea:'T',you:'U',yew:'U',vee:'V',doubleyou:'W',ex:'X',why:'Y',zee:'Z',zed:'Z'};
 function normalize(text){return text.toLowerCase().replace(/double[\s-]+(?:you|u)/g,' w ').replace(/x[\s-]+ray/g,' xray ').replace(/[^a-z0-9\s]/g,' ').trim().split(/\s+/).map(t=>WORDS[t]||t.toUpperCase()).join('');}
 function randomInt(n){const a=new Uint32Array(1);crypto.getRandomValues(a);return Math.floor(a[0]/4294967296*n)}
 function generateCall(format){let f=format==='mixed'?['short','long','two'][randomInt(3)]:format;const letter=()=>String.fromCharCode(65+randomInt(26));const prefix=f==='two'?['KA','KB','KC','KD','KE','KF','KG','KI','KJ','KK','KL','KM','KN','KO','KP','KQ','KR','KS','KT','KU','KV','KW','KX','KY','KZ','WA','WB','WD'][randomInt(28)]:['K','N','W'][randomInt(3)];return prefix+randomInt(10)+Array.from({length:f==='short'?2:3},letter).join('');}
@@ -24,7 +24,7 @@ const localVoice = new LocalVoice((state, value) => {
   else if(state==='error') { $('voiceTitle').textContent='Voice setup needs another try'; $('voiceInfo').textContent=value; $('install').hidden=false; }
 });
 $('signal').innerHTML=Array.from({length:31},()=>'<span></span>').join('');
-function setPhase(next,title,instruction){phase=next;$('headline').textContent=title;$('instruction').textContent=instruction;const names={loading:'Preparing local voice',idle:'Standing by',playing:'Receiving Morse',listening:'Your turn · listening',typing:'Your turn · copy',feedback:'Copy checked',revealed:'Call sign revealed',paused:'Session paused'};$('statusLabel').textContent=names[next]||next;$('signal').classList.toggle('active',next==='playing'||next==='listening');$('replay').disabled=!running||['playing','feedback'].includes(next);$('reveal').disabled=!running||['playing','feedback'].includes(next);$('answer').disabled=next!=='typing';$('submit').disabled=next!=='typing';$('answerForm').hidden=!running||$('inputMode').value!=='type';}
+function setPhase(next,title,instruction){phase=next;$('headline').textContent=title;$('instruction').textContent=instruction;const names={loading:'Preparing local voice',idle:'Standing by',playing:$('inputMode').value==='voice'?'Playing + listening':'Receiving Morse',listening:'Your turn · listening',typing:'Your turn · copy',feedback:'Copy checked',revealed:'Call sign revealed',paused:'Session paused'};$('statusLabel').textContent=names[next]||next;$('signal').classList.toggle('active',next==='playing'||next==='listening');$('replay').disabled=!running||['playing','feedback'].includes(next);$('reveal').disabled=!running||['playing','feedback'].includes(next);$('answer').disabled=next!=='typing';$('submit').disabled=next!=='typing';$('answerForm').hidden=!running||$('inputMode').value!=='type';}
 function stats(){$('correct').textContent=correct;$('accuracy').textContent=total?Math.round(correct/total*100)+'%':'—';$('streak').textContent=streak;}
 function silence(){for(const n of nodes){try{n.stop()}catch{}}nodes.clear();}
 function stopListening(){localVoice.stop();}
@@ -33,14 +33,35 @@ async function audio(){if(!ctx)ctx=new (window.AudioContext||window.webkitAudioC
 function tone(hz,at,duration,level=.2){const osc=ctx.createOscillator(),gain=ctx.createGain();osc.frequency.value=hz;osc.connect(gain);gain.connect(ctx.destination);const volume=Number($('volume').value)/100;gain.gain.setValueAtTime(0,at);gain.gain.linearRampToValueAtTime(level*volume,at+.005);gain.gain.setValueAtTime(level*volume,at+Math.max(.006,duration-.008));gain.gain.linearRampToValueAtTime(0,at+duration);osc.start(at);osc.stop(at+duration+.02);nodes.add(osc);osc.onended=()=>{nodes.delete(osc);osc.disconnect();gain.disconnect()};}
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 function clearCopy(){$('call').textContent='· · ·   − − −   · · ·';$('call').classList.remove('revealed');$('call').setAttribute('aria-label','Call sign hidden');$('answer').value='';}
-async function play(){const token=invalidate();if(!running)return;clearCopy();$('feedback').textContent='Listen for the whole call sign.';setPhase('playing','Listen. You’ve got this.','Copy the letters and numbers in your head.');try{await audio();if(token!==epoch)return;const seq=timings(current,+$('speed').value,+$('spacing').value);const start=ctx.currentTime+.15;seq.events.forEach(e=>tone(+$('tone').value,start+e.at,e.duration));await delay((seq.duration+.4)*1000);if(token!==epoch||!running)return;answerTurn(token);}catch(e){if(token===epoch){endSession();$('feedback').textContent=e.message;}}}
+async function play(){
+  const token=invalidate();if(!running)return;
+  clearCopy();$('feedback').textContent='Listen for the whole call sign.';
+  setPhase('playing','Listen. You’ve got this.','Copy the letters and numbers in your head.');
+  try {
+    await audio();if(token!==epoch)return;
+    const seq=timings(current,+$('speed').value,+$('spacing').value);
+    const captureVoice=$('inputMode').value==='voice'&&voiceReady;
+    if(captureVoice)answerTurn(token,true);
+    if(token!==epoch||!running)return;
+    const start=ctx.currentTime+.15;
+    seq.events.forEach(e=>tone(+$('tone').value,start+e.at,e.duration));
+    await delay((seq.duration+.4)*1000);
+    if(token!==epoch||!running)return;
+    if(captureVoice&&$('inputMode').value==='voice'&&localVoice.finishPlayback){
+      setPhase('listening','Finish your copy.','Keep speaking, or say the call sign now.');
+      localVoice.finishPlayback();
+    }else answerTurn(token);
+  }catch(e){if(token===epoch){endSession();$('feedback').textContent=e.message;}}
+}
 function keyboardTurn(message){stopListening();localVoice.closeMicrophone();$('inputMode').value='type';$('modeBadge').textContent='KEYBOARD';$('inputNote').textContent='Type the complete call sign, then press Enter.';setPhase('typing','What did you hear?','Type the letters and numbers of the call sign.');if(message)$('feedback').textContent=message;$('answer').focus();}
-function answerTurn(token){
+function answerTurn(token,duringPlayback=false){
   if($('inputMode').value==='type'||!voiceReady){keyboardTurn();return;}
-  setPhase('listening','Your turn. Say your copy.','Say the complete call sign in one phrase.');
+  if(duringPlayback)setPhase('playing','Listen and say your copy.','You can speak the letters and numbers as Morse plays.');
+  else setPhase('listening','Your turn. Say your copy.','Say the complete call sign in one phrase.');
   $('feedback').textContent='Listening locally… letters, numbers, or phonetic words.';
   const valid=()=>token===epoch&&running;
   try { localVoice.listen({
+    deferResult:duringPlayback,
     onResult: text=>{if(valid())check(text);},
     onPartial: text=>{if(valid())$('feedback').textContent=text?'Hearing: '+text:'Listening on your device…';},
     onEmpty: ()=>{if(valid()){setPhase('listening','No speech heard.','Tap Replay when you’re ready to try again.');$('feedback').textContent='No attempt counted. Your microphone is still connected.';}},
@@ -82,8 +103,8 @@ $('format').onchange=saveSettings;
 function updateVoiceMode(){
   const voice=$('inputMode').value==='voice';
   $('modeBadge').textContent=voice?'VOSK · ON DEVICE':'KEYBOARD';
-  $('inputNote').textContent=voice?'Mic stays on during the session; only answers are decoded.':'Type the complete call sign, then press Enter.';
-  if(!running&&!starting&&phase==='idle')$('instruction').textContent=voice?'Press start, listen to the Morse code, then speak the letters and numbers.':'Press start, listen to the Morse code, then type the letters and numbers.';
+  $('inputNote').textContent=voice?'Listening during Morse and your answer. Audio stays local.':'Type the complete call sign, then press Enter.';
+  if(!running&&!starting&&phase==='idle')$('instruction').textContent=voice?'Press start and speak the letters as Morse plays, or answer afterwards.':'Press start, listen to the Morse code, then type the letters and numbers.';
 }
 $('inputMode').onchange=()=>{
   if(running||starting){endSession();$('feedback').textContent='Answer mode changed. Press Start practice to begin.';}
