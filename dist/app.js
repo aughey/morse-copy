@@ -6,7 +6,17 @@ function normalize(text){return text.toLowerCase().replace(/double[\s-]+(?:you|u
 function randomInt(n){const a=new Uint32Array(1);crypto.getRandomValues(a);return Math.floor(a[0]/4294967296*n)}
 function generateCall(format){let f=format==='mixed'?['short','long','two'][randomInt(3)]:format;const letter=()=>String.fromCharCode(65+randomInt(26));const prefix=f==='two'?['KA','KB','KC','KD','KE','KF','KG','KI','KJ','KK','KL','KM','KN','KO','KP','KQ','KR','KS','KT','KU','KV','KW','KX','KY','KZ','WA','WB','WD'][randomInt(28)]:['K','N','W'][randomInt(3)];return prefix+randomInt(10)+Array.from({length:f==='short'?2:3},letter).join('');}
 function timings(call,wpm,effective){const dot=1.2/wpm;const gapUnit=Math.max(dot,(60/Math.min(effective,wpm)-31*dot)/19);let t=0;const events=[];[...call].forEach((c,i)=>{[...MORSE[c]].forEach((s,j)=>{const duration=dot*(s==='-'?3:1);events.push({at:t,duration});t+=duration;if(j<MORSE[c].length-1)t+=dot;});if(i<call.length-1)t+=3*gapUnit;});return {events,duration:t};}
-let ctx,voiceReady=false,starting=false,running=false,phase='idle',current='',attempted=false,epoch=0,correct=0,total=0,streak=0,lastCall='',nodes=new Set();
+let ctx,voiceReady=false,starting=false,running=false,loadingVoice=false,phase='idle',current='',attempted=false,epoch=0,correct=0,total=0,streak=0,lastCall='',nodes=new Set();
+const screenAwake=new PracticeWakeLock((state,supported)=>{
+  const button=$('wakeStatus');
+  const labels={idle:'Screen sleep allowed',waiting:'Keep awake paused',requesting:'Keeping screen awake…',locked:'Screen stays awake',released:'Keep awake · retry',blocked:'Keep awake · retry',unsupported:'Keep awake unavailable'};
+  button.textContent=labels[state];button.dataset.state=state;
+  button.disabled=!['released','blocked'].includes(state);
+  button.title=state==='locked'?'The screen will stay on while this session is active.':!supported?'Screen wake lock is unavailable here. Try opening this page in Safari or Chrome.':['released','blocked'].includes(state)?'Your browser or power-saving settings may block keeping the screen on. Tap to retry.':'The screen is kept awake automatically during practice and model loading.';
+});
+const syncKeepAwake=()=>screenAwake.setActive(starting||running||loadingVoice);
+$('wakeStatus').onclick=()=>screenAwake.acquire();
+window.addEventListener('focus',()=>{if(starting||running||loadingVoice)screenAwake.acquire();});
 const localVoice = new LocalVoice((state, value) => {
   if(state==='ready') { $('voiceTitle').textContent='Vosk ready · running on this device'; $('voiceInfo').textContent='Letters, digits, and phonetic words. No audio uploads.'; $('install').hidden=true; }
   else if(state==='progress') { $('voiceTitle').textContent='Downloading model · '+value+'%'; $('voiceInfo').textContent=value===100?'Download complete. Preparing local recognition…':'One-time download, about 40 MB. Keep this page open.'; }
@@ -39,10 +49,10 @@ function answerTurn(token){
 }
 async function check(spoken){if(!running||!['typing','listening'].includes(phase))return;const copy=normalize(spoken||'');if(!copy)return;const token=invalidate();const good=copy===current;total++;if(good){correct++;streak++;}else{streak=0;attempted=true;}stats();setPhase('feedback',good?'Good copy. Nicely done.':'Not quite. Listen again.',good?'A new call sign is coming up.':'Same call sign. Another chance to catch it.');$('feedback').textContent='Your copy: '+copy+(good?' · Correct':' · Try again');if(good){$('call').textContent=current;$('call').classList.add('revealed');$('call').setAttribute('aria-label',current);}try{await audio();if(token!==epoch)return;const t=ctx.currentTime+.05;if(good){tone(880,t,.14,.24);tone(1174.66,t+.15,.3,.18);}else{tone(220,t,.42,.25);tone(164.81,t+.09,.4,.15);}}catch{}await delay(good?1400:1800);if(token!==epoch||!running)return;if(good)newCall();play();}
 function newCall(){let next;do{next=generateCall($('format').value)}while(next===lastCall);current=next;lastCall=next;attempted=false;}
-function endSession(){running=false;starting=false;invalidate();localVoice.closeMicrophone();$('start').disabled=false;$('start').textContent='▶  Start practice';$('pause').hidden=true;$('answerForm').hidden=true;setPhase('paused','A good place to pause.','Your session stats stay here. Start again whenever you like.');$('feedback').textContent='73. See you on the next frequency.';}
+function endSession(){running=false;starting=false;syncKeepAwake();invalidate();localVoice.closeMicrophone();$('start').disabled=false;$('start').textContent='▶  Start practice';$('pause').hidden=true;$('answerForm').hidden=true;setPhase('paused','A good place to pause.','Your session stats stay here. Start again whenever you like.');$('feedback').textContent='73. See you on the next frequency.';}
 $('start').onclick=async()=>{
   if(running||starting)return;
-  starting=true; const token=invalidate(); $('start').disabled=true; $('pause').hidden=false;
+  starting=true; syncKeepAwake(); const token=invalidate(); $('start').disabled=true; $('pause').hidden=false;
   try {
     await audio();
     if(token!==epoch)return;
@@ -80,10 +90,10 @@ $('inputMode').onchange=()=>{
   saveSettings();updateVoiceMode();
 };
 $('install').onclick=async()=>{
-  $('install').disabled=true;$('install').textContent='Loading voice…';
+  loadingVoice=true;syncKeepAwake();$('install').disabled=true;$('install').textContent='Loading voice…';
   try{await localVoice.load();if(!running&&!starting){$('inputMode').value='voice';updateVoiceMode();saveSettings();}}
   catch(error){$('voiceInfo').textContent=error.message;}
-  finally{$('install').disabled=false;$('install').textContent='Load local voice · about 40 MB';}
+  finally{loadingVoice=false;syncKeepAwake();$('install').disabled=false;$('install').textContent='Load local voice · about 40 MB';}
 };
 voiceReady=localVoice.supported;
 $('inputMode').options[0].disabled=!voiceReady;
@@ -91,4 +101,4 @@ if(!voiceReady){$('inputMode').value='type';$('voiceTitle').textContent='Local v
 else{$('voiceTitle').textContent='Local voice · model ready to load';$('voiceInfo').textContent='First use downloads about 40 MB. Recognition runs on this device.';$('install').hidden=false;}
 updateVoiceMode();
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&(running||starting))endSession();});
-window.addEventListener('pagehide',()=>localVoice.closeMicrophone());
+window.addEventListener('pagehide',()=>{screenAwake.setActive(false);localVoice.closeMicrophone();});
