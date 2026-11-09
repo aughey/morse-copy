@@ -2,7 +2,7 @@
 
 Practice copying Morse call signs by ear, using voice, an external audio keyer, or keyboard answers.
 
-Select **Start random words** for continuous copy practice by ear or on paper. The app loads 250 words from `dist/words.json` on the same site and plays them in shuffled order using your station audio settings. The stream continues through a fresh shuffle after each pass. Select **End practice** to stop. Word practice requires no microphone or answers and leaves call sign scores alone.
+Select **Start random words** for continuous copy practice by ear or on paper. The app loads 250 words from `dist/words.json` on the same site and plays them in shuffled order using your station audio settings. To focus on particular letters, enter them in **Random word letters** before starting. Each word must contain at least one of the entered letters. The filter ignores case and nonletters. The stream continues through a fresh shuffle after each pass. Select **End practice** to stop. Word practice requires no microphone or answers and leaves call sign scores alone.
 
 **Live app:** https://aughey.github.io/morse-copy/
 

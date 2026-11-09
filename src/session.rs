@@ -460,7 +460,7 @@ impl Session {
         });
     }
 
-    pub fn start_words(self) {
+    pub fn start_words(self, letters: String) {
         if self.phase().active() {
             return;
         }
@@ -476,7 +476,7 @@ impl Session {
         );
         self.keep_awake();
         spawn_local(async move {
-            if let Ok(Err(error)) = Abortable::new(self.play_words(), registration).await {
+            if let Ok(Err(error)) = Abortable::new(self.play_words(&letters), registration).await {
                 if self.valid(token) {
                     self.end();
                     self.feedback(detection::describe(error));
@@ -485,7 +485,7 @@ impl Session {
         });
     }
 
-    async fn play_words(self) -> Result<(), JsValue> {
+    async fn play_words(self, letters: &str) -> Result<(), JsValue> {
         let ctx = self.ctx()?;
         audio::resume(&ctx).await?;
         let runtime = self.runtime();
@@ -494,6 +494,12 @@ impl Session {
             let words = WordDeck::load().await?;
             runtime.borrow_mut().words = Some(words);
         }
+        runtime
+            .borrow_mut()
+            .words
+            .as_mut()
+            .unwrap()
+            .filter(letters)?;
         self.display(
             Phase::PlayingWords,
             "Listen and copy the words.",

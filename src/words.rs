@@ -6,6 +6,8 @@ use web_sys::Response;
 
 pub struct WordDeck {
     words: Vec<String>,
+    order: Vec<usize>,
+    letters: Vec<u8>,
     next: usize,
 }
 
@@ -37,19 +39,58 @@ impl WordDeck {
         if words.len() < 2 {
             return Err(Error::new("The word list needs at least two distinct words.").into());
         }
-        Ok(Self { words, next: 0 })
+        Ok(Self {
+            order: (0..words.len()).collect(),
+            words,
+            letters: Vec::new(),
+            next: 0,
+        })
+    }
+
+    pub fn filter(&mut self, input: &str) -> Result<(), JsValue> {
+        let mut letters: Vec<_> = input
+            .bytes()
+            .filter(u8::is_ascii_alphabetic)
+            .map(|letter| letter.to_ascii_uppercase())
+            .collect();
+        letters.sort_unstable();
+        letters.dedup();
+        if letters == self.letters {
+            return Ok(());
+        }
+
+        let order: Vec<_> = self
+            .words
+            .iter()
+            .enumerate()
+            .filter(|(_, word)| letters.is_empty() || word.bytes().any(|c| letters.contains(&c)))
+            .map(|(index, _)| index)
+            .collect();
+        if order.is_empty() {
+            return Err(Error::new(
+                "No words contain those letters. Try other letters or clear the filter.",
+            )
+            .into());
+        }
+
+        self.order = order;
+        self.letters = letters;
+        self.next = 0;
+        Ok(())
     }
 
     pub fn draw(&mut self) -> &str {
-        let mut end = self.words.len();
+        let mut end = self.order.len();
         if self.next == end {
             self.next = 0;
             // Exclude the last word of the previous pass from the first draw.
-            end -= 1;
+            if end > 1 {
+                end -= 1;
+            }
         }
         let index = self.next + (Math::random() * (end - self.next) as f64) as usize;
-        self.words.swap(self.next, index);
+        self.order.swap(self.next, index);
         self.next += 1;
-        &self.words[self.next - 1]
+        &self.words[self.order[self.next - 1]]
     }
 }

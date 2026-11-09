@@ -277,7 +277,12 @@ button {
   margin: 0 auto 18px;
   width: min(100%, 360px);
 }
-.answer-form label {
+.word-filter {
+  margin: 0 auto;
+  width: min(100%, 360px);
+}
+.answer-form label,
+.word-filter label {
   display: block;
   font-size: 11px;
   margin-bottom: 6px;
@@ -286,7 +291,8 @@ button {
   display: flex;
   gap: 8px;
 }
-.answer-form input {
+.answer-form input,
+.word-filter input {
   width: 100%;
   min-width: 0;
   padding: 10px;
@@ -294,6 +300,10 @@ button {
   border-radius: 6px;
   text-transform: uppercase;
   letter-spacing: 2px;
+}
+.word-filter small {
+  display: block;
+  margin-top: 6px;
 }
 .answer-form button {
   white-space: nowrap;

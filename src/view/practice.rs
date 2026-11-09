@@ -63,12 +63,23 @@ fn StationDisplay(session: Session) -> impl IntoView {
 
 #[component]
 fn PracticeActions(session: Session) -> impl IntoView {
+    let word_letters = RwSignal::new(String::new());
+
     view! {
+        <form id="wordPractice" class="word-filter" hidden=move || session.station.with(|s| s.phase.active()) on:submit=move |ev| { ev.prevent_default(); session.start_words(word_letters.get_untracked()); }>
+            <label for="wordLetters">
+                "Random word letters (optional)"
+            </label>
+            <input id="wordLetters" placeholder="G, W, Q, P, X, Z" aria-describedby="wordLettersHint" autocomplete="off" autocapitalize="characters" spellcheck="false" on:input=move |ev| word_letters.set(event_target_value(&ev)) />
+            <small id="wordLettersHint">
+                "Every word will contain at least one of these letters. Leave blank for all words."
+            </small>
+        </form>
         <div class="actions">
             <button class="primary" id="start" hidden=move || session.station.with(|s| s.phase.active()) disabled=move || session.settings.with(|s| s.mode == Mode::Voice) && session.voice.with(|v| v.busy()) on:click=move |_| session.start()>
                 "▶ Start practice"
             </button>
-            <button class="secondary" id="startWords" hidden=move || session.station.with(|s| s.phase.active()) on:click=move |_| session.start_words()>
+            <button class="secondary" id="startWords" type="submit" form="wordPractice" hidden=move || session.station.with(|s| s.phase.active())>
                 "▶ Start random words"
             </button>
             <button class="secondary" id="replay" on:click=move |_| session.repeat() hidden=move || !session.station.with(|s| s.phase.can_replay())>
