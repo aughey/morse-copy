@@ -157,12 +157,17 @@ pub fn generate(format: &str, international: bool, random: impl Fn(usize) -> usi
     call
 }
 
-pub fn timings(call: &str, wpm: f64, effective: f64) -> (Vec<(f64, f64)>, f64) {
+pub fn spacing_unit(wpm: f64, effective: f64) -> f64 {
     let dot = 1.2 / wpm;
-    let gap = dot.max((60.0 / effective.min(wpm) - 31.0 * dot) / 19.0);
+    dot.max((60.0 / effective.min(wpm) - 31.0 * dot) / 19.0)
+}
+
+pub fn timings(text: &str, wpm: f64, effective: f64) -> (Vec<(f64, f64)>, f64) {
+    let dot = 1.2 / wpm;
+    let gap = spacing_unit(wpm, effective);
     let mut elapsed = 0.0;
     let mut events = Vec::new();
-    for (i, c) in call.bytes().enumerate() {
+    for (i, c) in text.bytes().enumerate() {
         let index = match c {
             b'A'..=b'Z' => c - b'A',
             b'0'..=b'9' => c - b'0' + 26,

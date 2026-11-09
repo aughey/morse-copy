@@ -127,7 +127,7 @@ pub(super) fn Intro() -> impl IntoView {
                     "with a little listening."
                 </h1>
                 <p>
-                    "Hear a call sign. Copy it back. Find your rhythm."
+                    "Copy call signs or listen to a continuous stream of random words."
                 </p>
             </div>
             <div class="intro-art" aria-hidden="true">

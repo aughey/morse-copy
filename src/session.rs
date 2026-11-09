@@ -3,6 +3,7 @@ use crate::{
     detection::{self, DeepCw, Engine, Microphone, Model, Output},
     morse,
     settings::{Mode, Settings},
+    words::WordDeck,
 };
 use futures::future::{AbortHandle, Abortable};
 use gloo_events::EventListener;
@@ -34,6 +35,8 @@ pub enum Phase {
     Idle,
     Loading,
     Playing,
+    LoadingWords,
+    PlayingWords,
     Listening,
     Typing,
     Feedback,
@@ -44,6 +47,12 @@ pub enum Phase {
 impl Phase {
     pub fn active(self) -> bool {
         !matches!(self, Self::Idle | Self::Paused)
+    }
+    pub fn words(self) -> bool {
+        matches!(self, Self::LoadingWords | Self::PlayingWords)
+    }
+    pub fn can_replay(self) -> bool {
+        self.active() && !self.words() && self != Self::Loading
     }
     pub fn label(self, mode: Mode) -> &'static str {
         match self {
@@ -60,6 +69,8 @@ impl Phase {
                     "Receiving Morse"
                 }
             }
+            Self::LoadingWords => "Loading the word list",
+            Self::PlayingWords => "Receiving Morse",
             Self::Listening => "Your turn · listening",
             Self::Typing => "Your turn · copy",
             Self::Feedback => "Copy checked",
@@ -162,7 +173,8 @@ struct Runtime {
     mic: Option<Rc<Microphone>>,
     voice: Option<Rc<Model>>,
     keyer: Option<Rc<DeepCw>>,
-    capture: Option<AbortHandle>,
+    pending: Option<AbortHandle>,
+    words: Option<WordDeck>,
     epoch: u32,
     call: String,
     attempted: bool,
@@ -241,10 +253,11 @@ impl Session {
 
     pub fn change_mode(self, mode: Mode) {
         self.change(|s| s.mode = mode);
-        if self.phase().active() {
+        let phase = self.phase();
+        if phase.active() && !phase.words() {
             self.end();
             self.feedback("Answer mode changed. Press Start practice to begin.");
-        } else if self.phase() == Phase::Idle {
+        } else if phase == Phase::Idle {
             self.station.update(|s| s.instruction = mode.welcome());
         }
     }
@@ -261,8 +274,8 @@ impl Session {
         if let Some(mic) = &state.mic {
             mic.active(None);
         }
-        if let Some(capture) = state.capture.take() {
-            capture.abort();
+        if let Some(pending) = state.pending.take() {
+            pending.abort();
         }
         state.epoch
     }
@@ -299,7 +312,8 @@ impl Session {
     }
 
     pub fn end(self) {
-        if !self.phase().active() {
+        let phase = self.phase();
+        if !phase.active() {
             return;
         }
         self.invalidate();
@@ -307,7 +321,11 @@ impl Session {
         self.display(
             Phase::Paused,
             "A good place to pause.",
-            "Your session stats stay here. Start again whenever you like.",
+            if phase.words() {
+                "Press Start random words whenever you’re ready to copy again."
+            } else {
+                "Your session stats stay here. Start again whenever you like."
+            },
             "73. See you on the next frequency.",
         );
         self.keep_awake();
@@ -442,6 +460,61 @@ impl Session {
         });
     }
 
+    pub fn start_words(self) {
+        if self.phase().active() {
+            return;
+        }
+        let token = self.invalidate();
+        let (abort, registration) = AbortHandle::new_pair();
+        self.runtime().borrow_mut().pending = Some(abort);
+        self.station.update(|s| s.revealed = None);
+        self.display(
+            Phase::LoadingWords,
+            "Getting random words ready.",
+            "The words will play one after another.",
+            "",
+        );
+        self.keep_awake();
+        spawn_local(async move {
+            if let Ok(Err(error)) = Abortable::new(self.play_words(), registration).await {
+                if self.valid(token) {
+                    self.end();
+                    self.feedback(detection::describe(error));
+                }
+            }
+        });
+    }
+
+    async fn play_words(self) -> Result<(), JsValue> {
+        let ctx = self.ctx()?;
+        audio::resume(&ctx).await?;
+        let runtime = self.runtime();
+        let needs_words = runtime.borrow().words.is_none();
+        if needs_words {
+            let words = WordDeck::load().await?;
+            runtime.borrow_mut().words = Some(words);
+        }
+        self.display(
+            Phase::PlayingWords,
+            "Listen and copy the words.",
+            "Copy in your head or on paper as the words keep coming.",
+            "",
+        );
+        const LEAD: f64 = 0.075;
+        loop {
+            let settings = self.settings.get_untracked();
+            let mut state = runtime.borrow_mut();
+            let word = state.words.as_mut().unwrap().draw();
+            let start = ctx.current_time() + LEAD;
+            let (playback, duration) = schedule_morse(&ctx, start, word, &settings)?;
+            state.playback = Some(playback);
+            drop(state);
+            let gap = 7. * morse::spacing_unit(settings.speed, settings.spacing);
+            let delay = ((start + duration + gap - LEAD - ctx.current_time()) * 1000.).ceil();
+            TimeoutFuture::new(delay.max(0.) as u32).await;
+        }
+    }
+
     async fn prepare(self, mode: Mode, token: u32) -> Result<(), JsValue> {
         let ctx = self.ctx()?;
         audio::resume(&ctx).await?;
@@ -480,7 +553,7 @@ impl Session {
     }
 
     pub fn repeat(self) {
-        if self.phase().active() && self.phase() != Phase::Loading {
+        if self.phase().can_replay() {
             self.play();
         }
     }
@@ -526,30 +599,8 @@ impl Session {
         let settings = self.settings.get_untracked();
         let runtime = self.runtime();
         let call = runtime.borrow().call.clone();
-        let (marks, duration) = morse::timings(&call, settings.speed, settings.spacing);
-        let mut playback = Playback::default();
         let start = ctx.current_time() + 0.15;
-        let volume = settings.volume / 100.;
-        let path = playback.radio(
-            &ctx,
-            start,
-            duration,
-            settings.tone,
-            volume,
-            &settings.radio,
-        )?;
-        let destination: web_sys::AudioNode = ctx.destination().unchecked_into();
-        let level = 0.2 * if path.is_some() { 1. } else { volume };
-        for (offset, length) in marks {
-            playback.tone(
-                &ctx,
-                path.as_ref().unwrap_or(&destination),
-                settings.tone,
-                start + offset,
-                length,
-                level,
-            )?;
-        }
+        let (playback, duration) = schedule_morse(&ctx, start, &call, &settings)?;
         runtime.borrow_mut().playback = Some(playback);
         let delay = ((duration + 0.4) * 1000.) as u32;
         if settings.mode != Mode::Voice {
@@ -591,7 +642,7 @@ impl Session {
             );
         }
         let (abort, registration) = AbortHandle::new_pair();
-        runtime.borrow_mut().capture = Some(abort);
+        runtime.borrow_mut().pending = Some(abort);
         let result = Abortable::new(
             detection::listen(
                 &mic,
@@ -630,7 +681,7 @@ impl Session {
         if !self.valid(token) {
             return;
         }
-        runtime.borrow_mut().capture = None;
+        runtime.borrow_mut().pending = None;
         match result {
             Ok(Ok(Output::Copy(copy))) => self.check(&copy),
             Ok(Ok(Output::Repeat)) => self.play(),
@@ -676,7 +727,7 @@ impl Session {
     }
 
     pub fn reveal(self) {
-        if !self.phase().active() || self.phase() == Phase::Loading {
+        if !self.phase().can_replay() {
             return;
         }
         self.invalidate();
@@ -779,6 +830,31 @@ impl Session {
         self.runtime().borrow_mut().playback = Some(playback);
         Ok(())
     }
+}
+
+fn schedule_morse(
+    ctx: &AudioContext,
+    start: f64,
+    text: &str,
+    settings: &Settings,
+) -> Result<(Playback, f64), JsValue> {
+    let (marks, duration) = morse::timings(text, settings.speed, settings.spacing);
+    let mut playback = Playback::default();
+    let volume = settings.volume / 100.;
+    let path = playback.radio(ctx, start, duration, settings.tone, volume, &settings.radio)?;
+    let destination: web_sys::AudioNode = ctx.destination().unchecked_into();
+    let level = 0.2 * if path.is_some() { 1. } else { volume };
+    for (offset, length) in marks {
+        playback.tone(
+            ctx,
+            path.as_ref().unwrap_or(&destination),
+            settings.tone,
+            start + offset,
+            length,
+            level,
+        )?;
+    }
+    Ok((playback, duration))
 }
 
 fn copy_text(text: &str, mode: Mode) -> String {

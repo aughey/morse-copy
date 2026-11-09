@@ -12,7 +12,7 @@ pub(super) fn PracticeStation(session: Session) -> impl IntoView {
                 </span>
                 <div class="station-badges">
                     <span id="modeBadge" class="pill">
-                        {move || session.settings.with(|s| s.mode.badge())}
+                        {move || if session.station.with(|s| s.phase.words()) { "RANDOM WORDS" } else { session.settings.with(|s| s.mode.badge()) }}
                     </span>
                     <button id="wakeStatus" class="pill wake-status" type="button" aria-live="polite" prop:disabled=move || session.awake.get() != Awake::Retry data-state=move || session.awake.get().state() on:click=move |_| session.keep_awake()>
                         {move || session.awake.get().label()}
@@ -24,7 +24,7 @@ pub(super) fn PracticeStation(session: Session) -> impl IntoView {
             <KeyboardAnswer session=session />
             <div class="station-foot">
                 <span id="inputNote">
-                    {move || session.settings.with(|s| s.mode.note())}
+                    {move || if session.station.with(|s| s.phase.words()) { "Continuous copy practice. Listen until you choose End practice." } else { session.settings.with(|s| s.mode.note()) }}
                 </span>
             </div>
         </section>
@@ -42,7 +42,7 @@ fn StationDisplay(session: Session) -> impl IntoView {
                     {move || session.station.with(|s| s.phase.label(session.settings.with(|settings| settings.mode)))}
                 </span>
             </div>
-            <div class="signal" id="signal" aria-hidden="true" class:active=move || session.station.with(|s| matches!(s.phase, Phase::Playing | Phase::Listening))>
+            <div class="signal" id="signal" aria-hidden="true" class:active=move || session.station.with(|s| matches!(s.phase, Phase::Playing | Phase::Listening | Phase::PlayingWords))>
                 {(0..31).map(|_| view! { <span></span> }).collect_view()}
             </div>
             <h2 id="headline">
@@ -51,7 +51,7 @@ fn StationDisplay(session: Session) -> impl IntoView {
             <p id="instruction">
                 {move || session.station.with(|s| s.instruction)}
             </p>
-            <div class="call" id="call" class:revealed=move || session.station.with(|s| s.revealed.is_some()) aria-label=move || session.station.with(|s| s.revealed.clone().unwrap_or_else(|| "Call sign hidden".into()))>
+            <div class="call" id="call" hidden=move || session.station.with(|s| s.phase.words()) class:revealed=move || session.station.with(|s| s.revealed.is_some()) aria-label=move || session.station.with(|s| s.revealed.clone().unwrap_or_else(|| "Call sign hidden".into()))>
                 {move || session.station.with(|s| s.revealed.clone().unwrap_or_else(|| HIDDEN_CALL.into()))}
             </div>
             <div id="feedback" role="status" aria-live="polite">
@@ -68,10 +68,13 @@ fn PracticeActions(session: Session) -> impl IntoView {
             <button class="primary" id="start" hidden=move || session.station.with(|s| s.phase.active()) disabled=move || session.settings.with(|s| s.mode == Mode::Voice) && session.voice.with(|v| v.busy()) on:click=move |_| session.start()>
                 "▶ Start practice"
             </button>
-            <button class="secondary" id="replay" on:click=move |_| session.repeat() hidden=move || session.station.with(|s| !s.phase.active() || s.phase == Phase::Loading)>
+            <button class="secondary" id="startWords" hidden=move || session.station.with(|s| s.phase.active()) on:click=move |_| session.start_words()>
+                "▶ Start random words"
+            </button>
+            <button class="secondary" id="replay" on:click=move |_| session.repeat() hidden=move || !session.station.with(|s| s.phase.can_replay())>
                 "↻ Repeat"
             </button>
-            <button class="text-button" id="reveal" on:click=move |_| session.reveal() hidden=move || session.station.with(|s| !s.phase.active() || s.phase == Phase::Loading)>
+            <button class="text-button" id="reveal" on:click=move |_| session.reveal() hidden=move || !session.station.with(|s| s.phase.can_replay())>
                 "Reveal"
             </button>
             <button class="text-button" id="pause" hidden=move || !session.station.with(|s| s.phase.active()) on:click=move |_| session.end()>
@@ -94,7 +97,7 @@ fn KeyboardAnswer(session: Session) -> impl IntoView {
     });
 
     view! {
-        <form id="answerForm" class="answer-form" hidden=move || !session.station.with(|s| s.phase.active()) || !session.settings.with(|s| s.mode == Mode::Keyboard) on:submit=move |ev| { ev.prevent_default(); session.check(&session.answer.get_untracked()); }>
+        <form id="answerForm" class="answer-form" hidden=move || session.station.with(|s| !s.phase.active() || s.phase.words()) || !session.settings.with(|s| s.mode == Mode::Keyboard) on:submit=move |ev| { ev.prevent_default(); session.check(&session.answer.get_untracked()); }>
             <label for="answer">
                 "Your copy"
             </label>

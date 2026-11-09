@@ -9,6 +9,8 @@ mod session;
 mod settings;
 #[cfg(target_arch = "wasm32")]
 mod view;
+#[cfg(target_arch = "wasm32")]
+mod words;
 
 #[cfg(target_arch = "wasm32")]
 fn main() {
