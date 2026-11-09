@@ -29,7 +29,7 @@ Morse Copy is a Leptos client-side app compiled to WebAssembly. The static files
 
 All URLs are relative so assets and microphone worklets work under `/morse-copy/`. Voice initially downloads approximately 40 MB from the same site; the browser caches the extracted model. Speech audio is processed locally.
 
-Radio effects set to 0 are omitted from the audio processing chain: no corresponding noise buffers, oscillators, filters, or fading automation are created. With all three at 0, Morse uses the direct clean-audio path. Changes apply on the next playback.
+Radio effects set to 0 are omitted from the audio processing chain: no corresponding noise buffers, oscillators, filters, or fading automation are created. With all three at 0, Morse uses the direct clean-audio path. In random-word practice, the radio effects continue between words until the session ends. Changes apply on the next playback.
 
 ## Answer with an external keyer
 

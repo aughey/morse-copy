@@ -2,10 +2,13 @@ use js_sys::Math::random;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
-    AudioContext, AudioContextState, AudioNode, AudioScheduledSourceNode, BiquadFilterType,
+    AudioBufferSourceNode, AudioContext, AudioContextState, AudioNode, AudioParam,
+    AudioScheduledSourceNode, BiquadFilterType,
 };
 
-#[derive(Clone, Default)]
+const MODULATION_RATE: u32 = 8_000;
+
+#[derive(Clone, Default, PartialEq)]
 pub struct Radio {
     pub static_level: f64,
     pub interference: f64,
@@ -41,6 +44,24 @@ impl Drop for Playback {
 }
 
 impl Playback {
+    pub fn morse(
+        &mut self,
+        ctx: &AudioContext,
+        path: Option<&AudioNode>,
+        hz: f64,
+        start: f64,
+        marks: Vec<(f64, f64)>,
+        volume: f64,
+    ) -> Result<(), JsValue> {
+        let destination = ctx.destination();
+        let output = path.unwrap_or(destination.unchecked_ref());
+        let level = 0.2 * if path.is_some() { 1. } else { volume };
+        for (offset, length) in marks {
+            self.tone(ctx, output, hz, start + offset, length, level)?;
+        }
+        Ok(())
+    }
+
     pub fn tone(
         &mut self,
         ctx: &AudioContext,
@@ -63,25 +84,28 @@ impl Playback {
         gain.gain()
             .linear_ramp_to_value_at_time(0., at + duration)?;
         self.connections.push(gain.unchecked_into());
-        self.source(osc.unchecked_into(), at, at + duration + 0.02)
+        self.source(osc.unchecked_into(), at, Some(at + duration + 0.02))
     }
 
     fn source(
         &mut self,
         node: AudioScheduledSourceNode,
         start: f64,
-        end: f64,
+        end: Option<f64>,
     ) -> Result<(), JsValue> {
         self.sources.push(node.clone());
         node.start_with_when(start)?;
-        node.stop_with_when(end)
+        if let Some(end) = end {
+            node.stop_with_when(end)?;
+        }
+        Ok(())
     }
 
     pub fn radio(
         &mut self,
         ctx: &AudioContext,
         start: f64,
-        duration: f64,
+        duration: Option<f64>,
         hz: f64,
         volume: f64,
         radio: &Radio,
@@ -89,7 +113,7 @@ impl Playback {
         if radio.static_level == 0. && radio.interference == 0. && radio.fading == 0. {
             return Ok(None);
         }
-        let end = start + duration + 0.12;
+        let end = duration.map(|duration| start + duration + 0.12);
         let output = ctx.create_gain()?;
         self.connections.push(output.clone().unchecked_into());
         output.connect_with_audio_node(&ctx.destination())?;
@@ -97,8 +121,10 @@ impl Playback {
         output
             .gain()
             .linear_ramp_to_value_at_time(volume as f32, start)?;
-        output.gain().set_value_at_time(volume as f32, end - 0.05)?;
-        output.gain().linear_ramp_to_value_at_time(0., end)?;
+        if let Some(end) = end {
+            output.gain().set_value_at_time(volume as f32, end - 0.05)?;
+            output.gain().linear_ramp_to_value_at_time(0., end)?;
+        }
 
         let input = if radio.fading > 0. {
             let fade = ctx.create_gain()?;
@@ -108,18 +134,30 @@ impl Playback {
             let strength = 1. - depth * (0.15 + random() * 0.45);
             let phase = random() * std::f64::consts::TAU;
             let period = 2.5 + random() * 4.;
-            let span = end - start;
-            let count = (span * 30.).ceil().max(2.) as usize;
-            let mut curve: Vec<_> = (0..count)
-                .map(|i| {
-                    let t = i as f64 / (count - 1) as f64 * span;
-                    let swell = (1. + (phase + t * std::f64::consts::TAU / period).sin()) / 2.;
-                    let flutter = (1. + (phase * 2. + t * 11.).sin()) / 2.;
-                    (strength * (1. - depth * (0.75 * swell + 0.1 * flutter))) as f32
-                })
-                .collect();
-            fade.gain()
-                .set_value_curve_at_time(&mut curve, start, span)?;
+            let envelope = |t: f64, flutter_rate: f64| {
+                let swell = (1. + (phase + t * std::f64::consts::TAU / period).sin()) / 2.;
+                let flutter = (1. + (phase * 2. + t * flutter_rate).sin()) / 2.;
+                (strength * (1. - depth * (0.75 * swell + 0.1 * flutter))) as f32
+            };
+            if let Some(end) = end {
+                let span = end - start;
+                let count = (span * 30.).ceil().max(2.) as usize;
+                let mut curve: Vec<_> = (0..count)
+                    .map(|i| envelope(i as f64 / (count - 1) as f64 * span, 11.))
+                    .collect();
+                fade.gain()
+                    .set_value_curve_at_time(&mut curve, start, span)?;
+            } else {
+                let count = (period * f64::from(MODULATION_RATE)).round() as u32;
+                // Fit a whole number of flutter cycles into the loop.
+                let turn = std::f64::consts::TAU;
+                let flutter_rate = (11. * period / turn).round() * turn / period;
+                let curve: Vec<_> = (0..count)
+                    .map(|i| envelope(f64::from(i) * period / f64::from(count), flutter_rate))
+                    .collect();
+                fade.gain().set_value(0.);
+                self.modulate(ctx, &fade.gain(), &curve, start)?;
+            }
             fade
         } else {
             output.clone()
@@ -140,11 +178,7 @@ impl Playback {
                         ((random() * 2. - 1.) * if crackle { burst } else { 1. }) as f32
                     })
                     .collect();
-                let buffer = ctx.create_buffer(1, count, ctx.sample_rate())?;
-                buffer.copy_to_channel(&samples, 0)?;
-                let node = ctx.create_buffer_source()?;
-                node.set_buffer(Some(&buffer));
-                node.set_loop(true);
+                let node = loop_buffer(ctx, &samples, ctx.sample_rate())?;
                 let filter = ctx.create_biquad_filter()?;
                 filter.set_type(BiquadFilterType::Bandpass);
                 filter.frequency().set_value(hz as f32);
@@ -168,21 +202,44 @@ impl Playback {
                 let gain = ctx.create_gain()?;
                 let hz = (hz + if nearby { 170. } else { -230. }).max(150.) as f32;
                 osc.frequency().set_value_at_time(hz, start)?;
-                osc.frequency()
-                    .linear_ramp_to_value_at_time(hz + random() as f32 * 24. - 12., end)?;
+                if let Some(end) = end {
+                    osc.frequency()
+                        .linear_ramp_to_value_at_time(hz + random() as f32 * 24. - 12., end)?;
+                } else {
+                    let drift = ctx.create_oscillator()?;
+                    let depth = ctx.create_gain()?;
+                    drift.frequency().set_value(0.12 + random() as f32 * 0.08);
+                    depth.gain().set_value(12.);
+                    drift.connect_with_audio_node(&depth)?;
+                    depth.connect_with_audio_param(&osc.frequency())?;
+                    self.connections.push(depth.unchecked_into());
+                    self.source(drift.unchecked_into(), start, None)?;
+                }
                 gain.gain().set_value_at_time(0., start - 0.05)?;
                 if nearby {
-                    let mut t = start + 0.1;
-                    while t < end - 0.2 {
-                        let length =
-                            (if random() < 0.5 { 0.075_f64 } else { 0.225 }).min(end - t - 0.01);
-                        gain.gain().set_value_at_time(0., t)?;
-                        gain.gain()
-                            .linear_ramp_to_value_at_time(0.055 * level, t + 0.005)?;
-                        gain.gain()
-                            .set_value_at_time(0.055 * level, t + length - 0.005)?;
-                        gain.gain().linear_ramp_to_value_at_time(0., t + length)?;
-                        t += length + if random() < 0.25 { 0.45 } else { 0.075 };
+                    let peak = 0.055 * level;
+                    if let Some(end) = end {
+                        let param = gain.gain();
+                        nearby_bursts(start, end, |t, length| {
+                            param.set_value_at_time(0., t)?;
+                            param.linear_ramp_to_value_at_time(peak, t + 0.005)?;
+                            param.set_value_at_time(peak, t + length - 0.005)?;
+                            param.linear_ramp_to_value_at_time(0., t + length)?;
+                            Ok(())
+                        })?;
+                    } else {
+                        let rate = f64::from(MODULATION_RATE);
+                        let mut curve = vec![0.; (16 * MODULATION_RATE) as usize];
+                        nearby_bursts(0., 16., |t, length| {
+                            let first = (t * rate) as usize;
+                            let count = (length * rate) as usize;
+                            let edge = (0.005 * rate) as usize;
+                            for (i, value) in curve[first..first + count].iter_mut().enumerate() {
+                                *value = peak * i.min(count - i).min(edge) as f32 / edge as f32;
+                            }
+                            Ok(())
+                        })?;
+                        self.modulate(ctx, &gain.gain(), &curve, start)?;
                     }
                 } else {
                     gain.gain()
@@ -196,4 +253,43 @@ impl Playback {
         }
         Ok(Some(input.unchecked_into()))
     }
+
+    fn modulate(
+        &mut self,
+        ctx: &AudioContext,
+        param: &AudioParam,
+        samples: &[f32],
+        start: f64,
+    ) -> Result<(), JsValue> {
+        let node = loop_buffer(ctx, samples, MODULATION_RATE as f32)?;
+        node.connect_with_audio_param(param)?;
+        self.source(node.unchecked_into(), start, None)
+    }
+}
+
+fn loop_buffer(
+    ctx: &AudioContext,
+    samples: &[f32],
+    rate: f32,
+) -> Result<AudioBufferSourceNode, JsValue> {
+    let buffer = ctx.create_buffer(1, samples.len() as u32, rate)?;
+    buffer.copy_to_channel(samples, 0)?;
+    let node = ctx.create_buffer_source()?;
+    node.set_buffer(Some(&buffer));
+    node.set_loop(true);
+    Ok(node)
+}
+
+fn nearby_bursts(
+    start: f64,
+    end: f64,
+    mut schedule: impl FnMut(f64, f64) -> Result<(), JsValue>,
+) -> Result<(), JsValue> {
+    let mut t = start + 0.1;
+    while t < end - 0.2 {
+        let length = (if random() < 0.5 { 0.075_f64 } else { 0.225 }).min(end - t - 0.01);
+        schedule(t, length)?;
+        t += length + if random() < 0.25 { 0.45 } else { 0.075 };
+    }
+    Ok(())
 }

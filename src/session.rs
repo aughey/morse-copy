@@ -170,6 +170,7 @@ impl Awake {
 struct Runtime {
     ctx: Option<AudioContext>,
     playback: Option<Playback>,
+    word_radio: Playback,
     mic: Option<Rc<Microphone>>,
     voice: Option<Rc<Model>>,
     keyer: Option<Rc<DeepCw>>,
@@ -271,6 +272,7 @@ impl Session {
         let mut state = runtime.borrow_mut();
         state.epoch = state.epoch.wrapping_add(1);
         state.playback = None;
+        state.word_radio = Playback::default();
         if let Some(mic) = &state.mic {
             mic.active(None);
         }
@@ -507,12 +509,32 @@ impl Session {
             "",
         );
         const LEAD: f64 = 0.075;
+        let mut radio_path = None;
+        let mut radio_settings = None;
         loop {
             let settings = self.settings.get_untracked();
             let mut state = runtime.borrow_mut();
+            let volume = settings.volume / 100.;
+            let config = (settings.radio, settings.tone, volume);
+            if radio_settings.as_ref() != Some(&config) {
+                let mut radio = Playback::default();
+                let start = ctx.current_time() + LEAD;
+                radio_path = radio.radio(&ctx, start, None, settings.tone, volume, &config.0)?;
+                state.word_radio = radio;
+                radio_settings = Some(config);
+            }
             let word = state.words.as_mut().unwrap().draw();
+            let (marks, duration) = morse::timings(word, settings.speed, settings.spacing);
             let start = ctx.current_time() + LEAD;
-            let (playback, duration) = schedule_morse(&ctx, start, word, &settings)?;
+            let mut playback = Playback::default();
+            playback.morse(
+                &ctx,
+                radio_path.as_ref(),
+                settings.tone,
+                start,
+                marks,
+                volume,
+            )?;
             state.playback = Some(playback);
             drop(state);
             let gap = 7. * morse::spacing_unit(settings.speed, settings.spacing);
@@ -605,8 +627,19 @@ impl Session {
         let settings = self.settings.get_untracked();
         let runtime = self.runtime();
         let call = runtime.borrow().call.clone();
+        let (marks, duration) = morse::timings(&call, settings.speed, settings.spacing);
         let start = ctx.current_time() + 0.15;
-        let (playback, duration) = schedule_morse(&ctx, start, &call, &settings)?;
+        let volume = settings.volume / 100.;
+        let mut playback = Playback::default();
+        let path = playback.radio(
+            &ctx,
+            start,
+            Some(duration),
+            settings.tone,
+            volume,
+            &settings.radio,
+        )?;
+        playback.morse(&ctx, path.as_ref(), settings.tone, start, marks, volume)?;
         runtime.borrow_mut().playback = Some(playback);
         let delay = ((duration + 0.4) * 1000.) as u32;
         if settings.mode != Mode::Voice {
@@ -836,31 +869,6 @@ impl Session {
         self.runtime().borrow_mut().playback = Some(playback);
         Ok(())
     }
-}
-
-fn schedule_morse(
-    ctx: &AudioContext,
-    start: f64,
-    text: &str,
-    settings: &Settings,
-) -> Result<(Playback, f64), JsValue> {
-    let (marks, duration) = morse::timings(text, settings.speed, settings.spacing);
-    let mut playback = Playback::default();
-    let volume = settings.volume / 100.;
-    let path = playback.radio(ctx, start, duration, settings.tone, volume, &settings.radio)?;
-    let destination: web_sys::AudioNode = ctx.destination().unchecked_into();
-    let level = 0.2 * if path.is_some() { 1. } else { volume };
-    for (offset, length) in marks {
-        playback.tone(
-            ctx,
-            path.as_ref().unwrap_or(&destination),
-            settings.tone,
-            start + offset,
-            length,
-            level,
-        )?;
-    }
-    Ok((playback, duration))
 }
 
 fn copy_text(text: &str, mode: Mode) -> String {
