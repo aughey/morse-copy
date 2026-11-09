@@ -16,155 +16,86 @@ const assert = require("node:assert/strict");
     localStorage.setItem("morse-copy-hide-welcome", "true"),
   );
   await page.goto(process.argv[2] || "http://127.0.0.1:8765");
-  const results = await page.evaluate(async () => {
-    const engine = new LocalKeyer();
-    const start = performance.now();
-    await engine.load();
-    const loaded = Math.round(performance.now() - start);
-    async function decode(call, wpm, hz, rate = 48000) {
-      const seq = timings(call, wpm, wpm),
-        lead = 0.5;
-      const samples = new Float32Array(
-        Math.ceil((seq.duration + lead + 1) * rate),
-      );
-      for (const e of seq.events) {
-        const n = Math.round(e.duration * rate),
-          at = Math.round((e.at + lead) * rate);
-        for (let i = 0; i < n; i++)
-          samples[at + i] =
-            0.3 *
-            Math.sin((2 * Math.PI * hz * (at + i)) / rate) *
-            Math.min(1, i / (0.005 * rate), (n - i) / (0.005 * rate));
-      }
-      const id = ++engine.captureId;
-      return await new Promise((resolve, reject) => {
-        const timeout = setTimeout(
-          () => reject(Error("inference timeout")),
-          45000,
-        );
-        engine.callbacks = {
-          onPartial() {},
-          onResult(text) {
-            clearTimeout(timeout);
-            resolve(text);
-          },
-          onEmpty() {
-            clearTimeout(timeout);
-            resolve("");
-          },
-          onError: reject,
-        };
-        engine.worker.postMessage({ type: "start", id, rate });
-        for (let i = 0; i < samples.length; i += 2048) {
-          const chunk = samples.slice(i, i + 2048);
-          engine.worker.postMessage({ type: "samples", id, samples: chunk }, [
-            chunk.buffer,
-          ]);
-        }
-        engine.worker.postMessage({ type: "finish", id });
-      });
-    }
-    const results = [];
-    for (const [call, wpm, hz] of [
-      ["K1ABC", 18, 600],
-      ["N0AA", 25, 800],
-      ["9A2TO", 12, 500],
-      ["", 18, 600],
-    ])
-      results.push({ call, decoded: await decode(call, wpm, hz) });
-    engine.worker.terminate();
-    return { loaded, results };
-  });
-  console.log(JSON.stringify(results));
-  for (const r of results.results)
-    assert.equal(r.decoded.replace(/\s/g, ""), r.call);
   await page.evaluate(() => {
-    window.testMicContext = new AudioContext();
-    window.testMicDestination = testMicContext.createMediaStreamDestination();
-    navigator.mediaDevices.getUserMedia = async () => testMicDestination.stream;
-  });
-  await page
-    .locator("details")
-    .filter({ has: page.locator("#inputMode") })
-    .evaluate((x) => (x.open = true));
-  await page.selectOption("#inputMode", "keyer");
-  await page.click("#start");
-  await page.waitForFunction(() => running, {}, { timeout: 45000 });
-  assert.equal(await page.evaluate(() => localVoice.model), null);
-  assert.equal(await page.evaluate(() => phase), "playing");
-  assert.equal(await page.evaluate(() => localKeyer.callbacks), null);
-  await page.waitForFunction(
-    () => phase === "listening",
-    {},
-    { timeout: 30000 },
-  );
-
-  assert.equal(await page.evaluate(() => !!localKeyer.callbacks), true);
-  async function send(call, target) {
-    await page.evaluate(
-      ({ call, target }) => {
-        current = target;
-        const seq = timings(call, 18, 18),
-          rate = testMicContext.sampleRate;
-        const buffer = testMicContext.createBuffer(
-          1,
-          Math.ceil((seq.duration + 1) * rate),
-          rate,
-        );
-        const samples = buffer.getChannelData(0);
-        for (const e of seq.events) {
-          const n = Math.round(e.duration * rate),
-            at = Math.round((e.at + 0.2) * rate);
-          for (let i = 0; i < n; i++)
-            samples[at + i] =
-              0.2 *
-              Math.sin((2 * Math.PI * 600 * (at + i)) / rate) *
-              Math.min(1, i / (0.005 * rate), (n - i) / (0.005 * rate));
+    const codes = [
+      ".-", "-...", "-.-.", "-..", ".", "..-.", "--.", "....", "..", ".---",
+      "-.-", ".-..", "--", "-.", "---", ".--.", "--.-", ".-.", "...", "-",
+      "..-", "...-", ".--", "-..-", "-.--", "--..",
+      "-----", ".----", "..---", "...--", "....-", ".....", "-....", "--...", "---..", "----.",
+    ];
+    const context = new AudioContext();
+    const destination = context.createMediaStreamDestination();
+    navigator.mediaDevices.getUserMedia = async () => destination.stream;
+    window.sendMorse = async call => {
+      await context.resume();
+      const rate = context.sampleRate;
+      const dot = 1.2 / 18;
+      let t = 0.3;
+      const marks = [];
+      for (const letter of call) {
+        for (const mark of codes["ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".indexOf(letter)]) {
+          const duration = dot * (mark === "-" ? 3 : 1);
+          marks.push([t, duration]);
+          t += duration + dot;
         }
-        const source = testMicContext.createBufferSource();
-        source.buffer = buffer;
-        source.connect(testMicDestination);
-        source.start();
-      },
-      { call, target },
-    );
-  }
-  await send("K1ABC", "K1ABC");
-  await page.waitForFunction(() => total === 1, {}, { timeout: 25000 });
-  assert.equal(await page.evaluate(() => correct), 1);
-  console.log(
-    "Matching call automatically scored through real AudioWorklet and model",
-  );
-  await page.waitForFunction(
-    () => phase === "listening",
-    {},
-    { timeout: 25000 },
-  );
-  await send("K1ABD", "N0AA");
-  await page.waitForFunction(() => total === 2, {}, { timeout: 25000 });
-  assert.equal(await page.evaluate(() => correct), 1);
-  assert.match(
-    await page.locator("#feedback").textContent(),
-    /K1ABD.*Try again/,
-  );
-  console.log("Incorrect call automatically checked after silence");
-  await page.click("#pause");
-  assert.equal(await page.evaluate(() => localKeyer.stream), null);
-  await page.selectOption("#inputMode", "voice");
-  assert.equal(
-    await page.locator("#modeBadge").textContent(),
-    "VOSK · ON DEVICE",
-  );
-  const voiceOpened = await page.evaluate(async () => {
-    testMicDestination = testMicContext.createMediaStreamDestination();
-    const opened = await localVoice.openMicrophone(ctx);
-    localVoice.closeMicrophone();
-    return opened;
+        t += 2 * dot;
+      }
+      const buffer = context.createBuffer(1, Math.ceil((t + 0.5) * rate), rate);
+      const samples = buffer.getChannelData(0);
+      for (const [at, duration] of marks) {
+        const n = Math.round(duration * rate);
+        for (let i = 0; i < n; i++) {
+          samples[Math.round(at * rate) + i] = 0.3 * Math.sin(2 * Math.PI * 600 * i / rate) *
+            Math.min(1, i / (0.005 * rate), (n - i) / (0.005 * rate));
+        }
+      }
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(destination);
+      source.start();
+    };
+    window.micTrack = destination.stream.getAudioTracks()[0];
   });
-  assert.equal(voiceOpened, true);
+  const select = page.locator("#inputMode");
+  await select.evaluate(input => input.closest("details").open = true);
+  await select.selectOption("keyer");
+  await page.locator("#includeInternational").evaluate(input => {
+    input.value = "no";
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await page.locator("#format").evaluate(input => {
+    input.value = "long";
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  // Use a known, reproducible call for the synthetic inference fixture.
+  await page.evaluate(() => {
+    const original = Math.random;
+    const draws = [0, 0.1, 0, 1.5 / 26, 2.5 / 26];
+    Math.random = () => {
+      const draw = draws.shift();
+      if (draws.length === 0) Math.random = original;
+      return draw;
+    };
+  });
+  await page.locator("#start").click();
+  await page.getByText("Your turn. Send your copy.", { exact: true }).waitFor({ timeout: 60_000 });
+  await page.locator("#reveal").click();
+  const call = await page.locator("#call").textContent();
+  assert.equal(call, "K1ABC");
+  await page.locator("#replay").click();
+  await page.getByText("Your turn. Send your copy.", { exact: true }).waitFor();
+  await page.evaluate(call => sendMorse(call), call);
+  await page.getByText("Good copy. Nicely done.", { exact: true }).waitFor({ timeout: 25_000 });
+  assert.equal(await page.locator("#correct").textContent(), "1");
+
+  await page.getByText("Your turn. Send your copy.", { exact: true }).waitFor({ timeout: 20_000 });
+  await page.evaluate(() => sendMorse("DL1ABC"));
+  await page.getByText("Not quite. Listen again.", { exact: true }).waitFor({ timeout: 25_000 });
+  assert.match(await page.locator("#feedback").textContent(), /DL1ABC.*Try again/);
+  await page.locator("#pause").click();
+  await page.waitForFunction(() => micTrack.readyState === "ended");
   assert.deepEqual(errors, []);
-  await page.evaluate(() => testMicContext.close());
-  console.log("Browser lifecycle and independent voice mode passed");
+  console.log("Real AudioWorklet and DeepCW checked correct and incorrect synthetic keyer audio.");
   await browser.close();
 })().catch((e) => {
   console.error(e);

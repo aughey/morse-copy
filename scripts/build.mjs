@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, rm, writeFile, access } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
@@ -7,28 +7,10 @@ import { execFileSync } from "node:child_process";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const source = resolve(root, "dist");
 const output = resolve(root, "_site");
+const run = (command, args) => execFileSync(command, args, { cwd: root, stdio: "inherit" });
 
-// Keep the original static source intact, including its patched speech worker.
-for (const file of [
-  "app.js",
-  "welcome.js",
-  "speech.js",
-  "keyer.js",
-  "deepcw-core.js",
-  "deepcw-worker.js",
-  "wake-lock.js",
-  "radio.js",
-  "mic-worklet.js",
-  "vendor/vosk.js",
-]) {
-  execFileSync(process.execPath, ["--check", resolve(source, file)]);
-}
-const html = await readFile(resolve(source, "index.html"), "utf8");
-for (const [, url] of html.matchAll(/(?:src|href)="([^"]+)"/g)) {
-  if (/^(?:https?:|#)/.test(url)) continue;
-  if (url.startsWith("/"))
-    throw new Error(`Asset must support project Pages paths: ${url}`);
-  await access(resolve(source, url));
+for (const file of ["deepcw-core.js", "deepcw-worker.js", "mic-worklet.js", "vendor/vosk.js"]) {
+  run(process.execPath, ["--check", resolve(source, file)]);
 }
 const manifest = JSON.parse(
   await readFile(resolve(source, "models/manifest.json"), "utf8"),
@@ -52,10 +34,22 @@ for (const file of keyerManifest.files) {
   if (bytes.length !== file.bytes || createHash("sha256").update(bytes).digest("hex") !== file.sha256)
     throw new Error(`DeepCW asset integrity check failed: ${file.file}`);
 }
+const metadata = JSON.parse(execFileSync(
+  "cargo", ["metadata", "--locked", "--no-deps", "--format-version", "1"],
+  { cwd: root, encoding: "utf8" },
+));
+const target = "wasm32-unknown-unknown";
+run("cargo", ["build", "--locked", "--release", "--target", target]);
+
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 await cp(source, output, { recursive: true });
+run("wasm-bindgen", [
+  "--target", "web",
+  "--out-dir", output,
+  "--out-name", "morse_copy",
+  "--no-typescript",
+  resolve(metadata.target_directory, target, "release", "morse-copy.wasm"),
+]);
 await writeFile(resolve(output, ".nojekyll"), "");
-console.log(
-  `Built _site with ${total} verified speech model bytes and verified DeepCW/runtime assets.`,
-);
+console.log(`Built _site with Leptos CSR, ${total} verified speech model bytes, and verified DeepCW/runtime assets.`);

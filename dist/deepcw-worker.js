@@ -78,7 +78,7 @@ self.onmessage = async ({ data }) => {
         final: false,
         decoder: new Decoder(session, metadata),
       };
-    } else if (data.type === "stop") {
+    } else if (data.type === "stop" && (data.id === undefined || data.id === capture?.id)) {
       capture = null;
     } else if (capture && data.id === capture.id) {
       if (data.type === "samples" && !capture.final) {

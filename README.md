@@ -6,9 +6,13 @@ Practice copying Morse call signs by ear, using voice, an external audio keyer, 
 
 ## Source and behavior
 
-The actual static HTML, CSS, JavaScript, vendored Vosk engine, and five speech-model parts were migrated from the Morse Copy Sites source repository. The original four source commits are retained in Git history. `dist/` is the editable application source, as in the original project; `_site/` is generated deployment output.
+Morse Copy is a Leptos client-side app compiled to WebAssembly. The static files in `_site/` can be hosted on GitHub Pages or any static host. The `pre-leptos` Git tag records the original JavaScript release.
 
-The migrated app source is formatted for readability and preserves:
+- `src/view.rs` renders the station and settings with Leptos.
+- `src/session.rs` manages practice, scoring, and cancellation. `src/settings.rs` reads and writes browser preferences.
+- `src/morse.rs` and `src/audio.rs` generate calls and schedule Morse, radio effects, and feedback.
+- `src/detection.rs` owns microphone capture and answer timing. It binds to Vosk using wasm-bindgen and exchanges typed audio buffers and transcript events with the DeepCW worker. Rust futures await model readiness and recognition events.
+- `dist/` contains the static shell, styles, vendored inference runtimes and models, the DeepCW inference adapter, and the microphone AudioWorklet.
 
 - A startup welcome screen explains hands-free practice with pen or pencil and paper. **Don’t show this again** is saved locally in the browser; **How to practice** in the footer reopens the instructions and lets you change that choice.
 - International call signs are included by default in a roughly even mix with U.S. calls. Turn **Include international call signs** off for U.S.-only practice; the choice is remembered, including across upgrades from older settings. Call sign format still controls prefix/suffix length. U.S. two-letter prefixes include AA–AL, with A/K/N/W initials sampled evenly. International practice uses a curated set of prefixes, including digit-leading examples such as 9A, 9H, and S5; generated calls are not a registry of assigned stations. Prefix references: [ARRL](https://www.arrl.org/international-call-sign-series), [RSGB](https://rsgb.org/main/operating/licensing-novs-visitors/international-prefixes/).
@@ -33,17 +37,19 @@ This mode uses the wide-band [DeepCW model](https://github.com/e04/deepcw-engine
 
 ## Develop and verify
 
-Requires Node.js 22 or newer. No npm dependencies or installation step are needed.
+Install Node.js 22 or newer and a current stable Rust toolchain.
 
 ```sh
+rustup target add wasm32-unknown-unknown
+cargo install --locked wasm-bindgen-cli --version 0.2.128
 npm test
 npm run build
 python3 -m http.server 8000 --directory _site
 ```
 
-Open http://localhost:8000/ to practice locally. Browser microphone and wake lock access require a secure context (HTTPS or localhost), browser support, and the applicable permissions. Device power settings can affect wake lock availability.
+Open http://localhost:8000/ to practice locally. Microphone and wake lock access require a secure context (HTTPS or localhost) and browser support.
 
-The build checks JavaScript syntax, relative HTML asset links, speech model parts, and pinned DeepCW/ONNX assets against recorded sizes and SHA-256 hashes before copying the assets into `_site/`.
+The build verifies the bundled model hashes, compiles the locked Rust dependencies for WebAssembly, and packages the generated WebAssembly and loader with the static assets. Publish the contents of `_site/` together.
 
 ## GitHub Pages CI/CD
 
@@ -53,7 +59,7 @@ The repository's Pages publishing source must be **GitHub Actions**. Deployment 
 
 ## Tests and browser verification
 
-`tests/` covers recognition lifecycle, concurrent playback/capture, Nancy/November normalization, microphone cleanup, Morse timing, wake lock lifecycle, automatic keyer completion, silence handling, tone detection, final audio flushing, and decoding cancellation. Tests simulate browser APIs; actual microphone accuracy, audible playback, and device sleep behavior need a supported browser and real device. See `tests/README.md` for browser integration harnesses.
+Run `npm test` for the Rust call generation, normalization, and timing tests and the JavaScript model transport tests. See [browser verification](tests/README.md) for the Leptos workflow and synthetic keyer tests.
 
 ## Third-party notices
 
