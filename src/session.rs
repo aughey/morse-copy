@@ -320,6 +320,9 @@ impl Session {
         }
         self.invalidate();
         self.runtime().borrow_mut().mic = None;
+        if phase.words() {
+            audio::set_session_type("auto");
+        }
         self.display(
             Phase::Paused,
             "A good place to pause.",
@@ -466,6 +469,8 @@ impl Session {
         if self.phase().active() {
             return;
         }
+        // iOS treats Web Audio as ambient by default, which can mute the speaker.
+        audio::set_session_type("playback");
         let token = self.invalidate();
         let (abort, registration) = AbortHandle::new_pair();
         self.runtime().borrow_mut().pending = Some(abort);

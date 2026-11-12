@@ -1,4 +1,4 @@
-use js_sys::Math::random;
+use js_sys::{Math::random, Reflect};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
@@ -13,6 +13,15 @@ pub struct Radio {
     pub static_level: f64,
     pub interference: f64,
     pub fading: f64,
+}
+
+pub fn set_session_type(kind: &str) {
+    let navigator = web_sys::window().unwrap().navigator();
+    if let Ok(session) = Reflect::get(&navigator, &"audioSession".into()) {
+        if session.is_object() {
+            let _ = Reflect::set(&session, &"type".into(), &kind.into());
+        }
+    }
 }
 
 pub async fn resume(ctx: &AudioContext) -> Result<(), JsValue> {
