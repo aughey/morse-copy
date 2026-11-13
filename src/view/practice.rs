@@ -154,6 +154,14 @@ pub(super) fn SessionStats(session: Session) -> impl IntoView {
                         "Current streak"
                     </span>
                 </div>
+                <div>
+                    <b id="maxStreak">
+                        {move || session.station.with(|s| s.score.max_streak)}
+                    </b>
+                    <span>
+                        "Maximum streak"
+                    </span>
+                </div>
             </div>
         </div>
     }

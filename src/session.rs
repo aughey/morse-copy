@@ -85,6 +85,7 @@ pub struct Score {
     pub correct: u32,
     pub total: u32,
     pub streak: u32,
+    pub max_streak: u32,
 }
 
 #[derive(Clone)]
@@ -817,6 +818,7 @@ impl Session {
             if good {
                 s.score.correct += 1;
                 s.score.streak += 1;
+                s.score.max_streak = s.score.max_streak.max(s.score.streak);
                 s.revealed = Some(call);
             } else {
                 s.score.streak = 0;

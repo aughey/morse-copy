@@ -396,18 +396,19 @@ select {
 }
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-top: 19px;
 }
 .stat-grid > div {
   border-right: 1px solid var(--line);
-  padding-left: 20px;
+  padding-inline: clamp(6px, 1.4vw, 20px);
 }
 .stat-grid > div:first-child {
   padding-left: 0;
 }
 .stat-grid > div:last-child {
   border: 0;
+  padding-right: 0;
 }
 .stat-grid b {
   font-family: Manrope, sans-serif;
