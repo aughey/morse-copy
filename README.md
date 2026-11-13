@@ -1,6 +1,8 @@
 # Morse Copy
 
-Practice copying Morse call signs by ear, using voice, an external audio keyer, or keyboard answers.
+Practice copying Morse call signs by ear, using voice, an external audio keyer, or keyboard answers. You can also copy words and answer aloud.
+
+Select **Start spoken words** to hear one Morse word at a time. Say the whole word when you recognize it. A matching recognition scores immediately and the next word plays automatically. A different recognized word counts as a miss and the same word plays again. Say **repeat** for another listen without an attempt. The optional letter filter selects the prompts. Local recognition uses the full practice vocabulary so it can still hear a different word. Spoken word practice keeps its own score.
 
 Select **Start random words** for continuous copy practice by ear or on paper. The app loads 500 words from `dist/words.json` on the same site and plays them in shuffled order using your station audio settings. To focus on particular letters, enter them in **Random word letters** before starting. Each word must contain at least one of the entered letters. The filter ignores case and nonletters. The stream continues through a fresh shuffle after each pass. Select **End practice** to stop. Word practice requires no microphone or answers and leaves call sign scores alone.
 

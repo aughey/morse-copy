@@ -127,7 +127,7 @@ pub(super) fn Intro() -> impl IntoView {
                     "with a little listening."
                 </h1>
                 <p>
-                    "Copy call signs or listen to a continuous stream of random words."
+                    "Copy call signs, answer Morse words aloud, or listen to a continuous stream of random words."
                 </p>
             </div>
             <div class="intro-art" aria-hidden="true">
@@ -191,6 +191,9 @@ pub(super) fn CompatibilityNotes() -> impl IntoView {
             </summary>
             <p>
                 "Voice uses the Vosk small English model, running in a WebAssembly worker on your device. First use downloads about 40 MB from this site. The extracted model is cached in your browser when storage is available; clearing site data or browser storage eviction requires downloading again. No speech server is used and microphone audio is never uploaded. Voice requires microphone permission and a browser with WebAssembly and AudioWorklet support. Open the page in Safari or Chrome if an embedded browser does not offer microphone access."
+            </p>
+            <p>
+                "Start spoken words plays one Morse word at a time. Say the whole word aloud. A correct copy scores as soon as it is recognized, and a different word is checked when you finish speaking. Say “repeat” for another listen without an attempt. Recognition uses the full practice word list, even when you filter the prompts by letter."
             </p>
             <p>
                 "The microphone stays connected during a voice session so practice can continue hands-free. Recognition listens while the Morse code plays and during your answer afterwards. Speak the letters as you hear them or wait until playback ends. Your answer is checked after the Morse finishes, so pauses between letters during playback are allowed. Ending the session, switching tabs, or leaving the page stops the microphone. Both “Nancy” and “November” mean the letter N; “Sugar” and “Sierra” mean S. Say “repeat” to replay immediately, even during Morse playback, without counting an attempt. After playback, finish your call sign in one phrase. You can mix letters, numbers, and phonetic words. Use phonetic spelling to help voice recognition distinguish similar-sounding letters. If nothing is heard within 18 seconds after playback, tap Repeat to try again without a penalty."

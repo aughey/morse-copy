@@ -241,7 +241,10 @@ impl Drop for Microphone {
 }
 
 pub enum Engine<'a> {
-    Voice(&'a Model),
+    Voice {
+        model: &'a Model,
+        word_grammar: Option<&'a str>,
+    },
     Keyer(&'a DeepCw),
 }
 
@@ -316,8 +319,12 @@ impl<'a> Capture<'a> {
         let (send, receive) = mpsc::unbounded();
         let mut listeners = Vec::new();
         let decoder = match engine {
-            Engine::Voice(model) => {
-                let args = Array::of2(&mic.rate.into(), &include_str!("voice_grammar.json").into());
+            Engine::Voice {
+                model,
+                word_grammar,
+            } => {
+                let grammar = word_grammar.unwrap_or(include_str!("voice_grammar.json"));
+                let args = Array::of2(&mic.rate.into(), &grammar.into());
                 let recognizer: Recognizer =
                     Reflect::construct(&model.recognizer_class(), &args)?.unchecked_into();
                 for (event, field) in [("result", "text"), ("partialresult", "partial")] {
@@ -463,7 +470,14 @@ pub async fn listen(
     partial: impl Fn(&str),
     playback_ended: impl Fn(),
 ) -> Result<Output, JsValue> {
-    let voice = matches!(engine, Engine::Voice(_));
+    let voice = matches!(engine, Engine::Voice { .. });
+    let spoken_word = matches!(
+        engine,
+        Engine::Voice {
+            word_grammar: Some(_),
+            ..
+        }
+    );
     let mut capture = Capture::start(mic, engine, id)?;
     let mut playback = playback_ms > 0;
     let mut segments = String::new();
@@ -534,12 +548,36 @@ pub async fn listen(
             }
             Input::Result(text) | Input::Partial(text) => {
                 let text = text.trim();
-                if voice
-                    && text
-                        .split(|c: char| !c.is_ascii_alphanumeric())
-                        .any(|word| word.eq_ignore_ascii_case("repeat"))
-                {
+                let repeat = if spoken_word {
+                    text.eq_ignore_ascii_case("repeat")
+                } else {
+                    voice
+                        && text
+                            .split(|c: char| !c.is_ascii_alphanumeric())
+                            .any(|word| word.eq_ignore_ascii_case("repeat"))
+                };
+                if repeat {
                     return Ok(Output::Repeat);
+                }
+                if spoken_word {
+                    if complete(text) {
+                        return Ok(Output::Copy(text.into()));
+                    }
+                    if final_segment {
+                        if !text.is_empty() {
+                            segments = text.into();
+                            settle = clock.now();
+                        }
+                        if flushing || (!playback && !segments.is_empty()) {
+                            return Ok(if segments.is_empty() {
+                                Output::Empty
+                            } else {
+                                Output::Copy(segments)
+                            });
+                        }
+                    }
+                    partial(text);
+                    continue;
                 }
                 let copy = if voice {
                     if final_segment && !text.is_empty() {

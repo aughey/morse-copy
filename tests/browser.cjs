@@ -82,6 +82,7 @@ const assert = require("node:assert/strict");
             construct(target, args) {
               const recognizer = Reflect.construct(target, args);
               (window.recognizers ||= []).push(recognizer);
+              (window.grammars ||= []).push(JSON.parse(args[1]));
               return recognizer;
             },
           });
@@ -110,8 +111,53 @@ const assert = require("node:assert/strict");
     assert.equal(await page.locator("#correct").textContent(), "1");
     await page.locator("#pause").click();
     await page.waitForFunction(() => testStreams.at(-1).stream.getTracks().every(track => track.readyState === "ended"));
+
+    // Use a deterministic prompt and a different word outside the letter filter.
+    await page.route("**/words.json", route => route.fulfill({ json: ["zebra", "apple", "banana", "zip"] }));
+    await page.evaluate(() => { Math.random = () => 0; });
+    await page.locator("#inputMode").selectOption("type");
+    await page.locator("#wordLetters").fill("z");
+    await page.locator("#startSpokenWords").click();
+    await page.waitForFunction(() => recognizers.length === 4);
+    assert.deepEqual(await page.evaluate(() => grammars.at(-1)), ["zebra", "apple", "banana", "zip", "repeat", "[unk]"]);
+    assert.equal(await page.locator("#inputMode").inputValue(), "type");
+    assert.equal(await page.locator("#answerForm").isVisible(), false);
+    assert.equal(await page.locator("#correct").textContent(), "0");
+    await page.evaluate(() => {
+      window.spoken = (text, final = false, recognizer = recognizers.at(-1)) => {
+        recognizer.dispatchEvent(new CustomEvent(final ? "result" : "partialresult", {
+          detail: { result: { [final ? "text" : "partial"]: text } },
+        }));
+      };
+      spoken("apple", true);
+    });
+    await page.getByText("Your copy: APPLE · Try again", { exact: true }).waitFor();
+    assert.equal(await page.locator("#accuracy").textContent(), "0%");
+    await page.waitForFunction(() => recognizers.length === 5);
+    await page.evaluate(() => spoken("repeat"));
+    await page.waitForFunction(() => recognizers.length === 6);
+    await page.evaluate(() => {
+      spoken("zebra", false, recognizers[4]);
+      spoken("ze");
+    });
+    await page.getByText("Hearing: ze", { exact: true }).waitFor();
+    assert.equal(await page.locator("#correct").textContent(), "0");
+    await page.evaluate(() => spoken("zebra"));
+    await page.getByText("Your copy: ZEBRA · Correct", { exact: true }).waitFor();
+    assert.equal(await page.locator("#correct").textContent(), "1");
+    assert.equal(await page.locator("#accuracy").textContent(), "50%");
+    await page.waitForFunction(() => recognizers.length === 7);
+    await page.locator("#reveal").click();
+    assert.equal(await page.locator("#call").textContent(), "ZIP");
+    await page.locator("#pause").click();
+    await page.waitForFunction(() => testStreams.at(-1).stream.getTracks().every(track => track.readyState === "ended"));
+
+    await page.locator("#startWords").click();
+    await page.getByText("Listen and copy the words.", { exact: true }).waitFor();
+    assert.equal(await page.locator("#correct").textContent(), "1");
+    await page.locator("#pause").click();
     assert.deepEqual(errors, []);
-    console.log("Keyboard flow, settings, audio effects, model startup, voice events, and microphone cleanup passed.");
+    console.log("Keyboard flow, settings, audio effects, model startup, call sign voice, spoken words, continuous words, and microphone cleanup passed.");
   } finally {
     await browser.close();
   }

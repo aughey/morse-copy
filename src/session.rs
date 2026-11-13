@@ -54,7 +54,7 @@ impl Phase {
     pub fn can_replay(self) -> bool {
         self.active() && !self.words() && self != Self::Loading
     }
-    pub fn label(self, mode: Mode) -> &'static str {
+    pub fn label(self, mode: Mode, spoken_words: bool) -> &'static str {
         match self {
             Self::Idle => "Standing by",
             Self::Loading => match mode {
@@ -74,6 +74,7 @@ impl Phase {
             Self::Listening => "Your turn · listening",
             Self::Typing => "Your turn · copy",
             Self::Feedback => "Copy checked",
+            Self::Revealed if spoken_words => "Word revealed",
             Self::Revealed => "Call sign revealed",
             Self::Paused => "Session paused",
         }
@@ -95,7 +96,27 @@ pub struct Station {
     pub instruction: &'static str,
     pub feedback: String,
     pub revealed: Option<String>,
-    pub score: Score,
+    pub spoken_words: bool,
+    call_score: Score,
+    word_score: Score,
+}
+
+impl Station {
+    pub fn score(&self) -> &Score {
+        if self.spoken_words {
+            &self.word_score
+        } else {
+            &self.call_score
+        }
+    }
+
+    fn score_mut(&mut self) -> &mut Score {
+        if self.spoken_words {
+            &mut self.word_score
+        } else {
+            &mut self.call_score
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -130,7 +151,7 @@ impl VoiceStatus {
             Self::Loading => "Restoring the cached model, or downloading it on first use.".into(),
             Self::Progress(100) => "Download complete. Preparing local recognition…".into(),
             Self::Progress(_) => "One-time download, about 40 MB. Keep this page open.".into(),
-            Self::Ready => "Letters, digits, and phonetic words. No audio uploads.".into(),
+            Self::Ready => "Recognizes call signs and practice words locally.".into(),
             Self::Failed(message) => message.clone(),
         }
     }
@@ -177,8 +198,9 @@ struct Runtime {
     keyer: Option<Rc<DeepCw>>,
     pending: Option<AbortHandle>,
     words: Option<WordDeck>,
+    word_grammar: Option<String>,
     epoch: u32,
-    call: String,
+    prompt: String,
     attempted: bool,
     lock: Option<(WakeLockSentinel, EventListener)>,
     lock_pending: bool,
@@ -204,7 +226,9 @@ impl Session {
                 instruction: settings.mode.welcome(),
                 feedback: "Your next good copy is one listen away.".into(),
                 revealed: None,
-                score: Score::default(),
+                spoken_words: false,
+                call_score: Score::default(),
+                word_score: Score::default(),
             }),
             settings: RwSignal::new(settings),
             answer: RwSignal::new(String::new()),
@@ -221,7 +245,14 @@ impl Session {
         self.station.with_untracked(|s| s.phase)
     }
     fn mode(self) -> Mode {
-        self.settings.with_untracked(|s| s.mode)
+        if self.spoken_words() {
+            Mode::Voice
+        } else {
+            self.settings.with_untracked(|s| s.mode)
+        }
+    }
+    fn spoken_words(self) -> bool {
+        self.station.with_untracked(|s| s.spoken_words)
     }
 
     fn display(
@@ -256,7 +287,7 @@ impl Session {
     pub fn change_mode(self, mode: Mode) {
         self.change(|s| s.mode = mode);
         let phase = self.phase();
-        if phase.active() && !phase.words() {
+        if phase.active() && !phase.words() && !self.spoken_words() {
             self.end();
             self.feedback("Answer mode changed. Press Start practice to begin.");
         } else if phase == Phase::Idle {
@@ -287,17 +318,21 @@ impl Session {
         self.runtime().borrow().epoch == token
     }
 
-    fn new_call(self) {
+    fn new_prompt(self) {
         let settings = self.settings.get_untracked();
         let runtime = self.runtime();
         let mut state = runtime.borrow_mut();
-        loop {
-            let call = morse::generate(&settings.format, settings.international, |n| {
-                (Math::random() * n as f64) as usize
-            });
-            if call != state.call {
-                state.call = call;
-                break;
+        if self.spoken_words() {
+            state.prompt = state.words.as_mut().unwrap().draw().into();
+        } else {
+            loop {
+                let call = morse::generate(&settings.format, settings.international, |n| {
+                    (Math::random() * n as f64) as usize
+                });
+                if call != state.prompt {
+                    state.prompt = call;
+                    break;
+                }
             }
         }
         state.attempted = false;
@@ -329,6 +364,8 @@ impl Session {
             "A good place to pause.",
             if phase.words() {
                 "Press Start random words whenever you’re ready to copy again."
+            } else if self.spoken_words() {
+                "Press Start spoken words whenever you’re ready to copy again."
             } else {
                 "Your session stats stay here. Start again whenever you like."
             },
@@ -438,13 +475,28 @@ impl Session {
     }
 
     pub fn start(self) {
-        if self.phase().active()
-            || (self.mode() == Mode::Voice && self.voice.get_untracked().busy())
-        {
+        self.start_scored(None);
+    }
+
+    pub fn start_spoken_words(self, letters: String) {
+        self.start_scored(Some(letters));
+    }
+
+    fn start_scored(self, word_letters: Option<String>) {
+        let spoken_words = word_letters.is_some();
+        let mode = if spoken_words {
+            Mode::Voice
+        } else {
+            self.settings.with_untracked(|s| s.mode)
+        };
+        if self.phase().active() || (mode == Mode::Voice && self.voice.get_untracked().busy()) {
             return;
         }
         let token = self.invalidate();
-        let mode = self.mode();
+        self.station.update(|s| {
+            s.spoken_words = spoken_words;
+            s.revealed = None;
+        });
         self.display(
             Phase::Loading,
             "Getting your station ready.",
@@ -457,7 +509,7 @@ impl Session {
         );
         self.keep_awake();
         spawn_local(async move {
-            if let Err(error) = self.prepare(mode, token).await {
+            if let Err(error) = self.prepare(mode, token, word_letters).await {
                 if self.valid(token) {
                     self.end();
                     self.feedback(detection::describe(error));
@@ -475,7 +527,10 @@ impl Session {
         let token = self.invalidate();
         let (abort, registration) = AbortHandle::new_pair();
         self.runtime().borrow_mut().pending = Some(abort);
-        self.station.update(|s| s.revealed = None);
+        self.station.update(|s| {
+            s.spoken_words = false;
+            s.revealed = None;
+        });
         self.display(
             Phase::LoadingWords,
             "Getting random words ready.",
@@ -496,18 +551,8 @@ impl Session {
     async fn play_words(self, letters: &str) -> Result<(), JsValue> {
         let ctx = self.ctx()?;
         audio::resume(&ctx).await?;
+        self.load_words(letters).await?;
         let runtime = self.runtime();
-        let needs_words = runtime.borrow().words.is_none();
-        if needs_words {
-            let words = WordDeck::load().await?;
-            runtime.borrow_mut().words = Some(words);
-        }
-        runtime
-            .borrow_mut()
-            .words
-            .as_mut()
-            .unwrap()
-            .filter(letters)?;
         self.display(
             Phase::PlayingWords,
             "Listen and copy the words.",
@@ -549,11 +594,41 @@ impl Session {
         }
     }
 
-    async fn prepare(self, mode: Mode, token: u32) -> Result<(), JsValue> {
+    async fn load_words(self, letters: &str) -> Result<(), JsValue> {
+        let runtime = self.runtime();
+        let needs_words = runtime.borrow().words.is_none();
+        if needs_words {
+            let words = WordDeck::load().await?;
+            runtime.borrow_mut().words = Some(words);
+        }
+        let mut state = runtime.borrow_mut();
+        state.words.as_mut().unwrap().filter(letters)
+    }
+
+    async fn prepare(
+        self,
+        mode: Mode,
+        token: u32,
+        word_letters: Option<String>,
+    ) -> Result<(), JsValue> {
         let ctx = self.ctx()?;
         audio::resume(&ctx).await?;
         if !self.valid(token) {
             return Ok(());
+        }
+        if let Some(letters) = word_letters {
+            let (abort, registration) = AbortHandle::new_pair();
+            let runtime = self.runtime();
+            runtime.borrow_mut().pending = Some(abort);
+            let Ok(result) = Abortable::new(self.load_words(&letters), registration).await else {
+                return Ok(());
+            };
+            result?;
+            let mut state = runtime.borrow_mut();
+            state.pending = None;
+            if state.word_grammar.is_none() {
+                state.word_grammar = Some(state.words.as_ref().unwrap().speech_grammar()?);
+            }
         }
         if mode != Mode::Keyboard {
             if mode == Mode::Voice {
@@ -581,7 +656,7 @@ impl Session {
                 return Ok(());
             }
         }
-        self.new_call();
+        self.new_prompt();
         self.play();
         Ok(())
     }
@@ -596,7 +671,14 @@ impl Session {
         let token = self.invalidate();
         self.answer.set(String::new());
         self.station.update(|s| s.revealed = None);
-        if self.mode() == Mode::Voice {
+        if self.spoken_words() {
+            self.display(
+                Phase::Playing,
+                "Listen and say the word.",
+                "Say the word aloud when you recognize it.",
+                "Say “repeat” for another listen.",
+            );
+        } else if self.mode() == Mode::Voice {
             self.display(
                 Phase::Playing,
                 "Listen and say your copy.",
@@ -632,8 +714,9 @@ impl Session {
         }
         let settings = self.settings.get_untracked();
         let runtime = self.runtime();
-        let call = runtime.borrow().call.clone();
-        let (marks, duration) = morse::timings(&call, settings.speed, settings.spacing);
+        let mode = self.mode();
+        let prompt = runtime.borrow().prompt.clone();
+        let (marks, duration) = morse::timings(&prompt, settings.speed, settings.spacing);
         let start = ctx.current_time() + 0.15;
         let volume = settings.volume / 100.;
         let mut playback = Playback::default();
@@ -648,34 +731,48 @@ impl Session {
         playback.morse(&ctx, path.as_ref(), settings.tone, start, marks, volume)?;
         runtime.borrow_mut().playback = Some(playback);
         let delay = ((duration + 0.4) * 1000.) as u32;
-        if settings.mode != Mode::Voice {
+        if mode != Mode::Voice {
             TimeoutFuture::new(delay).await;
             if !self.valid(token) {
                 return Ok(());
             }
             runtime.borrow_mut().playback = None;
         }
-        match settings.mode {
+        match mode {
             Mode::Keyboard => self.typing("Type your copy, then press Enter."),
-            Mode::Voice => self.listen(token, call, settings.mode, delay).await,
-            Mode::Keyer => self.listen(token, call, settings.mode, 0).await,
+            Mode::Voice => self.listen(token, prompt, mode, delay).await,
+            Mode::Keyer => self.listen(token, prompt, mode, 0).await,
         }
         Ok(())
     }
 
-    async fn listen(self, token: u32, call: String, mode: Mode, delay: u32) {
+    async fn listen(self, token: u32, prompt: String, mode: Mode, delay: u32) {
         let runtime = self.runtime();
+        let spoken_words = self.spoken_words();
         let (mic, voice, keyer) = {
             let state = runtime.borrow();
             (state.mic.clone(), state.voice.clone(), state.keyer.clone())
         };
+        let word_grammar = if spoken_words {
+            runtime.borrow().word_grammar.clone()
+        } else {
+            None
+        };
         let engine = match mode {
-            Mode::Voice => voice.as_deref().map(Engine::Voice),
+            Mode::Voice => voice.as_deref().map(|model| Engine::Voice {
+                model,
+                word_grammar: word_grammar.as_deref(),
+            }),
             Mode::Keyer => keyer.as_deref().map(Engine::Keyer),
             Mode::Keyboard => None,
         };
         let (Some(mic), Some(engine)) = (mic, engine) else {
-            self.typing("The microphone is unavailable. Continue with the keyboard.");
+            if spoken_words {
+                self.end();
+                self.feedback("The microphone is unavailable. Restart spoken word practice.");
+            } else {
+                self.typing("The microphone is unavailable. Continue with the keyboard.");
+            }
             return;
         };
         if mode == Mode::Keyer {
@@ -694,7 +791,7 @@ impl Session {
                 engine,
                 token,
                 delay,
-                |copy| copy_text(copy, mode) == call,
+                |copy| copy_text(copy, mode, spoken_words) == prompt,
                 |text| {
                     if self.valid(token) {
                         let prefix = if mode == Mode::Voice {
@@ -713,7 +810,11 @@ impl Session {
                         self.display(
                             Phase::Listening,
                             "Finish your copy.",
-                            "Keep speaking, or say the call sign now.",
+                            if spoken_words {
+                                "Say the word now."
+                            } else {
+                                "Keep speaking, or say the call sign now."
+                            },
                             "Listening on your device…",
                         );
                     }
@@ -750,11 +851,16 @@ impl Session {
                     self.voice
                         .set(VoiceStatus::Failed(detection::describe(error.clone())));
                 }
-                runtime.borrow_mut().playback = None;
-                self.typing(format!(
-                    "{} Continue with the keyboard, or restart practice.",
-                    detection::describe(error)
-                ));
+                if spoken_words {
+                    self.end();
+                    self.feedback(detection::describe(error));
+                } else {
+                    runtime.borrow_mut().playback = None;
+                    self.typing(format!(
+                        "{} Continue with the keyboard, or restart practice.",
+                        detection::describe(error)
+                    ));
+                }
             }
             Err(_) => {}
         }
@@ -778,35 +884,47 @@ impl Session {
         self.invalidate();
         let runtime = self.runtime();
         let mut state = runtime.borrow_mut();
+        let spoken_words = self.spoken_words();
         self.station.update(|s| {
             if !state.attempted {
-                s.score.total += 1;
-                s.score.streak = 0;
+                let score = s.score_mut();
+                score.total += 1;
+                score.streak = 0;
             }
-            s.revealed = Some(state.call.clone());
+            s.revealed = Some(state.prompt.clone());
         });
         state.attempted = true;
         self.display(
             Phase::Revealed,
-            "Here’s that call sign.",
+            if spoken_words {
+                "Here’s that word."
+            } else {
+                "Here’s that call sign."
+            },
             "Tap Repeat to listen again, then copy it back.",
-            "Reveal counted as a miss. Keep practicing this call sign.",
+            if spoken_words {
+                "Reveal counted as a miss. Keep practicing this word."
+            } else {
+                "Reveal counted as a miss. Keep practicing this call sign."
+            },
         );
     }
 
     pub fn check(self, text: &str) {
-        let call = self.runtime().borrow().call.clone();
-        let copy = copy_text(text, self.mode());
-        let good = copy == call;
+        let prompt = self.runtime().borrow().prompt.clone();
+        let spoken_words = self.spoken_words();
+        let copy = copy_text(text, self.mode(), spoken_words);
+        let good = copy == prompt;
         if copy.is_empty()
             || !(matches!(self.phase(), Phase::Typing | Phase::Listening)
                 || (self.phase() == Phase::Playing && good))
         {
             return;
         }
-        if text
-            .split(|c: char| !c.is_ascii_alphanumeric())
-            .any(|word| word.eq_ignore_ascii_case("repeat"))
+        if !spoken_words
+            && text
+                .split(|c: char| !c.is_ascii_alphanumeric())
+                .any(|word| word.eq_ignore_ascii_case("repeat"))
         {
             self.play();
             return;
@@ -814,26 +932,35 @@ impl Session {
         let token = self.invalidate();
         self.runtime().borrow_mut().attempted |= !good;
         self.station.update(|s| {
-            s.score.total += 1;
+            let score = s.score_mut();
+            score.total += 1;
             if good {
-                s.score.correct += 1;
-                s.score.streak += 1;
-                s.score.max_streak = s.score.max_streak.max(s.score.streak);
-                s.revealed = Some(call);
+                score.correct += 1;
+                score.streak += 1;
+                score.max_streak = score.max_streak.max(score.streak);
+                s.revealed = Some(prompt);
             } else {
-                s.score.streak = 0;
+                score.streak = 0;
             }
         });
         let (title, instruction, result) = if good {
             (
                 "Good copy. Nicely done.",
-                "A new call sign is coming up.",
+                if spoken_words {
+                    "A new word is coming up."
+                } else {
+                    "A new call sign is coming up."
+                },
                 "Correct",
             )
         } else {
             (
                 "Not quite. Listen again.",
-                "Same call sign. Another chance to catch it.",
+                if spoken_words {
+                    "The same word will play again."
+                } else {
+                    "Same call sign. Another chance to catch it."
+                },
                 "Try again",
             )
         };
@@ -841,14 +968,18 @@ impl Session {
             Phase::Feedback,
             title,
             instruction,
-            format!("Your copy: {copy} · {result}"),
+            if spoken_words && copy == "[UNK]" {
+                "Word unclear. Try again.".into()
+            } else {
+                format!("Your copy: {copy} · {result}")
+            },
         );
         spawn_local(async move {
             let _ = self.chime(token, good).await;
             TimeoutFuture::new(if good { 1400 } else { 1800 }).await;
             if self.valid(token) {
                 if good {
-                    self.new_call();
+                    self.new_prompt();
                 }
                 self.play();
             }
@@ -878,8 +1009,10 @@ impl Session {
     }
 }
 
-fn copy_text(text: &str, mode: Mode) -> String {
-    if mode == Mode::Keyer {
+fn copy_text(text: &str, mode: Mode, spoken_words: bool) -> String {
+    if spoken_words {
+        text.trim().to_ascii_uppercase()
+    } else if mode == Mode::Keyer {
         text.chars()
             .filter(|c| !c.is_whitespace())
             .map(|c| c.to_ascii_uppercase())

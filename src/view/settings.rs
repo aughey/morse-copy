@@ -238,7 +238,7 @@ fn AnswerModeSettings(session: Session) -> impl IntoView {
             <p class="hint" id="keyerInfo" hidden=move || session.settings.with(|s| s.mode != Mode::Keyer)>
                 "Place the computer microphone near your external keyer’s speaker. After practice playback ends, send the call sign in Morse. A correct copy scores as soon as it is decoded; otherwise a pause of about 1.8 seconds triggers a check. Use a keyer tone between 400 and 1200 Hz. DeepCW decodes locally; first use loads about 26 MB, independently of voice. Each answer has a 60-second limit. Use headphones for practice audio and a quiet room."
             </p>
-            <div class="voice-box" id="voiceBox" hidden=move || session.settings.with(|s| s.mode != Mode::Voice)>
+            <div class="voice-box" id="voiceBox" hidden=move || session.settings.with(|s| s.mode != Mode::Voice) && !session.station.with(|s| s.spoken_words)>
                 <span id="voiceIcon">
                     "◉"
                 </span>

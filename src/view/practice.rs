@@ -12,7 +12,11 @@ pub(super) fn PracticeStation(session: Session) -> impl IntoView {
                 </span>
                 <div class="station-badges">
                     <span id="modeBadge" class="pill">
-                        {move || if session.station.with(|s| s.phase.words()) { "RANDOM WORDS" } else { session.settings.with(|s| s.mode.badge()) }}
+                        {move || session.station.with(|s| {
+                            if s.phase.words() { "RANDOM WORDS" }
+                            else if s.spoken_words { "SPOKEN WORDS" }
+                            else { session.settings.with(|settings| settings.mode.badge()) }
+                        })}
                     </span>
                     <button id="wakeStatus" class="pill wake-status" type="button" aria-live="polite" prop:disabled=move || session.awake.get() != Awake::Retry data-state=move || session.awake.get().state() on:click=move |_| session.keep_awake()>
                         {move || session.awake.get().label()}
@@ -24,7 +28,11 @@ pub(super) fn PracticeStation(session: Session) -> impl IntoView {
             <KeyboardAnswer session=session />
             <div class="station-foot">
                 <span id="inputNote">
-                    {move || if session.station.with(|s| s.phase.words()) { "Continuous copy practice. Listen until you choose End practice." } else { session.settings.with(|s| s.mode.note()) }}
+                    {move || session.station.with(|s| {
+                        if s.phase.words() { "Continuous copy practice. Listen until you choose End practice." }
+                        else if s.spoken_words { "Say the whole word or say “repeat” to hear it again." }
+                        else { session.settings.with(|settings| settings.mode.note()) }
+                    })}
                 </span>
             </div>
         </section>
@@ -39,7 +47,10 @@ fn StationDisplay(session: Session) -> impl IntoView {
                 <span id="statusDot">
                 </span>
                 <span id="statusLabel">
-                    {move || session.station.with(|s| s.phase.label(session.settings.with(|settings| settings.mode)))}
+                    {move || session.station.with(|s| {
+                        let mode = if s.spoken_words { Mode::Voice } else { session.settings.with(|settings| settings.mode) };
+                        s.phase.label(mode, s.spoken_words)
+                    })}
                 </span>
             </div>
             <div class="signal" id="signal" aria-hidden="true" class:active=move || session.station.with(|s| matches!(s.phase, Phase::Playing | Phase::Listening | Phase::PlayingWords))>
@@ -51,7 +62,7 @@ fn StationDisplay(session: Session) -> impl IntoView {
             <p id="instruction">
                 {move || session.station.with(|s| s.instruction)}
             </p>
-            <div class="call" id="call" hidden=move || session.station.with(|s| s.phase.words()) class:revealed=move || session.station.with(|s| s.revealed.is_some()) aria-label=move || session.station.with(|s| s.revealed.clone().unwrap_or_else(|| "Call sign hidden".into()))>
+            <div class="call" id="call" hidden=move || session.station.with(|s| s.phase.words()) class:revealed=move || session.station.with(|s| s.revealed.is_some()) aria-label=move || session.station.with(|s| s.revealed.clone().unwrap_or_else(|| if s.spoken_words { "Word hidden".into() } else { "Call sign hidden".into() }))>
                 {move || session.station.with(|s| s.revealed.clone().unwrap_or_else(|| HIDDEN_CALL.into()))}
             </div>
             <div id="feedback" role="status" aria-live="polite">
@@ -66,9 +77,17 @@ fn PracticeActions(session: Session) -> impl IntoView {
     let word_letters = RwSignal::new(String::new());
 
     view! {
-        <form id="wordPractice" class="word-filter" hidden=move || session.station.with(|s| s.phase.active()) on:submit=move |ev| { ev.prevent_default(); session.start_words(word_letters.get_untracked()); }>
+        <form id="wordPractice" class="word-filter" hidden=move || session.station.with(|s| s.phase.active()) on:submit=move |ev: web_sys::SubmitEvent| {
+            ev.prevent_default();
+            let letters = word_letters.get_untracked();
+            if ev.submitter().is_some_and(|button| button.id() == "startSpokenWords") {
+                session.start_spoken_words(letters);
+            } else {
+                session.start_words(letters);
+            }
+        }>
             <label for="wordLetters">
-                "Random word letters (optional)"
+                "Practice word letters (optional)"
             </label>
             <input id="wordLetters" placeholder="G, W, Q, P, X, Z" aria-describedby="wordLettersHint" autocomplete="off" autocapitalize="characters" spellcheck="false" on:input=move |ev| word_letters.set(event_target_value(&ev)) />
             <small id="wordLettersHint">
@@ -81,6 +100,9 @@ fn PracticeActions(session: Session) -> impl IntoView {
             </button>
             <button class="secondary" id="startWords" type="submit" form="wordPractice" hidden=move || session.station.with(|s| s.phase.active())>
                 "▶ Start random words"
+            </button>
+            <button class="secondary" id="startSpokenWords" type="submit" form="wordPractice" hidden=move || session.station.with(|s| s.phase.active()) disabled=move || session.voice.with(|v| v.busy())>
+                "▶ Start spoken words"
             </button>
             <button class="secondary" id="replay" on:click=move |_| session.repeat() hidden=move || !session.station.with(|s| s.phase.can_replay())>
                 "↻ Repeat"
@@ -108,7 +130,7 @@ fn KeyboardAnswer(session: Session) -> impl IntoView {
     });
 
     view! {
-        <form id="answerForm" class="answer-form" hidden=move || session.station.with(|s| !s.phase.active() || s.phase.words()) || !session.settings.with(|s| s.mode == Mode::Keyboard) on:submit=move |ev| { ev.prevent_default(); session.check(&session.answer.get_untracked()); }>
+        <form id="answerForm" class="answer-form" hidden=move || session.station.with(|s| !s.phase.active() || s.phase.words() || s.spoken_words) || !session.settings.with(|s| s.mode == Mode::Keyboard) on:submit=move |ev| { ev.prevent_default(); session.check(&session.answer.get_untracked()); }>
             <label for="answer">
                 "Your copy"
             </label>
@@ -132,15 +154,18 @@ pub(super) fn SessionStats(session: Session) -> impl IntoView {
             <div class="stat-grid">
                 <div>
                     <b id="correct">
-                        {move || session.station.with(|s| s.score.correct)}
+                        {move || session.station.with(|s| s.score().correct)}
                     </b>
                     <span>
-                        "Call signs copied"
+                        {move || session.station.with(|s| if s.spoken_words { "Words copied" } else { "Call signs copied" })}
                     </span>
                 </div>
                 <div>
                     <b id="accuracy">
-                        {move || session.station.with(|s| if s.score.total == 0 { "—".into() } else { format!("{:.0}%", (100. * f64::from(s.score.correct) / f64::from(s.score.total)).round()) })}
+                        {move || session.station.with(|s| {
+                            let score = s.score();
+                            if score.total == 0 { "—".into() } else { format!("{:.0}%", (100. * f64::from(score.correct) / f64::from(score.total)).round()) }
+                        })}
                     </b>
                     <span>
                         "Accuracy"
@@ -148,7 +173,7 @@ pub(super) fn SessionStats(session: Session) -> impl IntoView {
                 </div>
                 <div>
                     <b id="streak">
-                        {move || session.station.with(|s| s.score.streak)}
+                        {move || session.station.with(|s| s.score().streak)}
                     </b>
                     <span>
                         "Current streak"
@@ -156,7 +181,7 @@ pub(super) fn SessionStats(session: Session) -> impl IntoView {
                 </div>
                 <div>
                     <b id="maxStreak">
-                        {move || session.station.with(|s| s.score.max_streak)}
+                        {move || session.station.with(|s| s.score().max_streak)}
                     </b>
                     <span>
                         "Maximum streak"

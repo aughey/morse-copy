@@ -19,5 +19,5 @@ web-sys = { version = "0.3", features = [
   "CustomEvent", "Document", "EventTarget", "GainNode", "HtmlDialogElement", "HtmlInputElement", "MediaDevices",
   "MediaStream", "MediaStreamAudioSourceNode", "MediaStreamConstraints",
   "MediaStreamTrack", "MediaTrackConstraints", "MessageEvent", "MessagePort",
-  "Navigator", "OscillatorNode", "Performance", "Response", "Storage", "Url", "Window", "Worker", "Worklet",
+  "Navigator", "OscillatorNode", "Performance", "Response", "Storage", "SubmitEvent", "Url", "Window", "Worker", "Worklet",
 ] }

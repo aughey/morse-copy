@@ -79,6 +79,16 @@ impl WordDeck {
         Ok(())
     }
 
+    pub fn speech_grammar(&self) -> Result<String, JsValue> {
+        let vocabulary = Array::new();
+        for word in &self.words {
+            vocabulary.push(&word.to_ascii_lowercase().into());
+        }
+        vocabulary.push(&"repeat".into());
+        vocabulary.push(&"[unk]".into());
+        Ok(js_sys::JSON::stringify(&vocabulary)?.into())
+    }
+
     pub fn draw(&mut self) -> &str {
         let mut end = self.order.len();
         if self.next == end {
