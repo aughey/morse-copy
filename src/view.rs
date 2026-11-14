@@ -3,7 +3,7 @@ mod practice;
 mod settings;
 
 use self::page::{CompatibilityNotes, Intro, PracticeGuide, SiteFooter, SiteHeader, WelcomeDialog};
-use self::practice::{PracticeStation, SessionStats};
+use self::practice::PracticeStation;
 use self::settings::StationSettings;
 use crate::session::Session;
 use gloo_events::EventListener;
@@ -38,10 +38,7 @@ pub fn app() -> impl IntoView {
                 <PracticeStation session=session />
                 <StationSettings session=session />
             </div>
-            <section class="bottom">
-                <SessionStats session=session />
-                <PracticeGuide />
-            </section>
+            <PracticeGuide />
             <CompatibilityNotes />
         </main>
         <SiteFooter welcome=welcome />

@@ -7,7 +7,7 @@ use crate::{
 };
 use futures::future::{AbortHandle, Abortable};
 use gloo_events::EventListener;
-use gloo_timers::future::TimeoutFuture;
+use gloo_timers::{callback::Interval, future::TimeoutFuture};
 use js_sys::{Math, Reflect};
 use leptos::prelude::*;
 use std::{cell::RefCell, rc::Rc};
@@ -202,6 +202,7 @@ struct Runtime {
     epoch: u32,
     prompt: String,
     attempted: bool,
+    timer: Option<(f64, Interval)>,
     lock: Option<(WakeLockSentinel, EventListener)>,
     lock_pending: bool,
 }
@@ -213,6 +214,7 @@ pub struct Session {
     pub answer: RwSignal<String>,
     pub voice: RwSignal<VoiceStatus>,
     pub awake: RwSignal<Awake>,
+    pub elapsed_seconds: RwSignal<u64>,
     runtime: StoredValue<Rc<RefCell<Runtime>>, LocalStorage>,
 }
 
@@ -234,6 +236,7 @@ impl Session {
             answer: RwSignal::new(String::new()),
             voice: RwSignal::new(VoiceStatus::Available),
             awake: RwSignal::new(Awake::Idle),
+            elapsed_seconds: RwSignal::new(0),
             runtime: StoredValue::new_local(Rc::new(RefCell::new(Runtime::default()))),
         }
     }
@@ -262,12 +265,35 @@ impl Session {
         instruction: &'static str,
         feedback: impl Into<String>,
     ) {
+        match (self.phase().active(), phase.active()) {
+            (false, true) => self.start_timer(),
+            (true, false) => self.stop_timer(),
+            _ => {}
+        }
         self.station.update(|s| {
             s.phase = phase;
             s.title = title;
             s.instruction = instruction;
             s.feedback = feedback.into();
         });
+    }
+
+    fn start_timer(self) {
+        let performance = web_sys::window().unwrap().performance().unwrap();
+        let started = performance.now();
+        self.elapsed_seconds.set(0);
+        let interval = Interval::new(1000, move || {
+            self.elapsed_seconds
+                .set(((performance.now() - started) / 1000.) as u64);
+        });
+        self.runtime().borrow_mut().timer = Some((started, interval));
+    }
+
+    fn stop_timer(self) {
+        if let Some((started, _interval)) = self.runtime().borrow_mut().timer.take() {
+            let now = web_sys::window().unwrap().performance().unwrap().now();
+            self.elapsed_seconds.set(((now - started) / 1000.) as u64);
+        }
     }
 
     pub fn change(self, update: impl FnOnce(&mut Settings)) {

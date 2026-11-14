@@ -56,6 +56,7 @@ fn StationDisplay(session: Session) -> impl IntoView {
             <div class="signal" id="signal" aria-hidden="true" class:active=move || session.station.with(|s| matches!(s.phase, Phase::Playing | Phase::Listening | Phase::PlayingWords))>
                 {(0..31).map(|_| view! { <span></span> }).collect_view()}
             </div>
+            <SessionStats session=session />
             <h2 id="headline">
                 {move || session.station.with(|s| s.title)}
             </h2>
@@ -145,11 +146,29 @@ fn KeyboardAnswer(session: Session) -> impl IntoView {
 }
 
 #[component]
-pub(super) fn SessionStats(session: Session) -> impl IntoView {
+fn SessionStats(session: Session) -> impl IntoView {
     view! {
-        <div class="stats card">
-            <div class="eyebrow">
-                "THIS SESSION"
+        <section class="stats" aria-labelledby="sessionStatsTitle">
+            <div class="stats-header">
+                <span class="eyebrow" id="sessionStatsTitle">
+                    "THIS SESSION"
+                </span>
+                <div class="elapsed">
+                    <span id="elapsedLabel">"Elapsed"</span>
+                    <b id="elapsed" role="timer" aria-labelledby="elapsedLabel">
+                        {move || {
+                            let elapsed = session.elapsed_seconds.get();
+                            let hours = elapsed / 3600;
+                            let minutes = elapsed / 60 % 60;
+                            let seconds = elapsed % 60;
+                            if hours == 0 {
+                                format!("{minutes:02}:{seconds:02}")
+                            } else {
+                                format!("{hours}:{minutes:02}:{seconds:02}")
+                            }
+                        }}
+                    </b>
+                </div>
             </div>
             <div class="stat-grid">
                 <div>
@@ -188,6 +207,6 @@ pub(super) fn SessionStats(session: Session) -> impl IntoView {
                     </span>
                 </div>
             </div>
-        </div>
+        </section>
     }
 }

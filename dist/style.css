@@ -152,7 +152,7 @@ p {
 }
 .station {
   text-align: center;
-  padding-top: 34px;
+  padding-top: 26px;
   flex: 1;
 }
 .status {
@@ -384,36 +384,51 @@ select {
   padding: 4px 0;
   text-align: left;
 }
-.bottom {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 22px;
-  margin-top: 22px;
-}
-.stats,
 .how {
+  margin-top: 22px;
   padding: 22px 25px;
+}
+.stats {
+  background: #f6f8f2;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+}
+.stats-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.elapsed {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.elapsed b {
+  color: var(--ink);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
 }
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-top: 19px;
+  margin-top: 8px;
 }
 .stat-grid > div {
   border-right: 1px solid var(--line);
-  padding-inline: clamp(6px, 1.4vw, 20px);
-}
-.stat-grid > div:first-child {
-  padding-left: 0;
+  padding-inline: 4px;
 }
 .stat-grid > div:last-child {
   border: 0;
-  padding-right: 0;
 }
 .stat-grid b {
   font-family: Manrope, sans-serif;
   display: block;
-  font-size: 29px;
+  font-size: 23px;
   font-weight: 500;
 }
 .stat-grid span {
@@ -541,12 +556,8 @@ footer .text-button {
   .practice {
     min-height: 627px;
   }
-  .station {
-    padding-top: 51px;
-  }
   .signal {
-    margin-top: 30px;
-    height: 90px;
+    height: 80px;
   }
   .actions {
     margin-bottom: 32px;
@@ -564,7 +575,7 @@ footer .text-button {
     padding: 30px 16px 0;
   }
   .intro {
-    margin-bottom: 26px;
+    margin-bottom: 18px;
   }
   .intro-art {
     display: none;
@@ -579,11 +590,15 @@ footer .text-button {
     padding: 20px 18px 0;
     min-height: 490px;
   }
+  .station {
+    padding-top: 14px;
+  }
+  .signal {
+    height: 55px;
+    margin-top: 10px;
+  }
   .settings {
     padding: 24px;
-  }
-  .bottom {
-    grid-template-columns: 1fr;
   }
   .steps {
     font-size: 10px;
